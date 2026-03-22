@@ -16,14 +16,12 @@ vi.mock('docx', () => ({
 }))
 
 vi.mock('xlsx', () => ({
-  default: {
-    utils: {
-      book_new: vi.fn(() => ({})),
-      aoa_to_sheet: vi.fn(() => ({})),
-      book_append_sheet: vi.fn(),
-    },
-    write: vi.fn(() => new Uint8Array([1, 2, 3])),
+  utils: {
+    book_new: vi.fn(() => ({})),
+    aoa_to_sheet: vi.fn(() => ({})),
+    book_append_sheet: vi.fn(),
   },
+  write: vi.fn(() => new Uint8Array([1, 2, 3])),
 }))
 
 import {

@@ -1,16 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('xlsx', () => ({
-  default: {
-    read: vi.fn(),
-    utils: {
-      sheet_to_csv: vi.fn(),
-    },
+  read: vi.fn(),
+  utils: {
+    sheet_to_csv: vi.fn(),
   },
 }))
 
 import { parseXlsx } from '../../../lib/parsers/xlsx.js'
-import XLSX from 'xlsx'
+import * as XLSX from 'xlsx'
 
 describe('parseXlsx', () => {
   it('extracts text from a single sheet', () => {

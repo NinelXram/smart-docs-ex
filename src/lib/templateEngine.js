@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { Document, Packer, Paragraph, TextRun } from 'docx'
-import XLSX from 'xlsx'
+import * as XLSX from 'xlsx'
 
 /**
  * Injects variable values into rawContent using marker-based replacement.
