@@ -63,7 +63,6 @@ export default function App() {
           <div className="flex-1 overflow-auto">
             {step === 1 && (
               <Upload
-                apiKey={apiKey}
                 onScan={data => {
                   setScanData(data)
                   setStep(2)
@@ -73,12 +72,14 @@ export default function App() {
             )}
             {step === 2 && scanData && (
               <Review
-                rawContent={scanData.text}
+                html={scanData.html}
+                binary={scanData.binary}
                 format={scanData.format}
-                initialVariables={scanData.variables}
+                fileName={scanData.fileName}
+                fields={scanData.fields}
+                apiKey={apiKey}
                 onSave={() => setStep(3)}
                 onBack={() => setStep(1)}
-                onToast={setToast}
               />
             )}
             {step === 3 && (
