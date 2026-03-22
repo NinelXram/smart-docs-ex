@@ -9,7 +9,7 @@ vi.mock('@google/generative-ai', () => ({
   })),
 }))
 
-import { testConnection, extractVariables, MAX_CHARS } from '../../lib/gemini.js'
+import { testConnection, extractVariables, MAX_CHARS, suggestFieldName } from '../../lib/gemini.js'
 
 const VALID_KEY = 'test-api-key'
 const SAMPLE_VARS = [
@@ -88,5 +88,40 @@ describe('extractVariables', () => {
     await expect(extractVariables(VALID_KEY, 'content')).rejects.toThrow(
       'MALFORMED_RESPONSE'
     )
+  })
+})
+
+describe('suggestFieldName', () => {
+  it('returns a valid camelCase field name from AI response', async () => {
+    mockGenerateContent.mockResolvedValue({ response: { text: () => 'ContractValue' } })
+    const result = await suggestFieldName('key', '$75,000', 'value shall be $75,000 payable', [])
+    expect(result).toBe('ContractValue')
+  })
+
+  it('includes selectedText, surroundingContext, and existingFields in the prompt', async () => {
+    mockGenerateContent.mockResolvedValue({ response: { text: () => 'FieldName' } })
+    await suggestFieldName('key', 'Alice', 'name is Alice here', ['ExistingField'])
+    const call = mockGenerateContent.mock.calls[0][0]
+    expect(call).toContain('"Alice"')
+    expect(call).toContain('name is Alice here')
+    expect(call).toContain('ExistingField')
+  })
+
+  it('returns null when AI response fails validation (not camelCase)', async () => {
+    mockGenerateContent.mockResolvedValue({ response: { text: () => 'not valid!' } })
+    const result = await suggestFieldName('key', 'text', 'ctx', [])
+    expect(result).toBeNull()
+  })
+
+  it('returns null when API call throws', async () => {
+    mockGenerateContent.mockRejectedValue(new Error('Network error'))
+    const result = await suggestFieldName('key', 'text', 'ctx', [])
+    expect(result).toBeNull()
+  })
+
+  it('returns null when response is empty string', async () => {
+    mockGenerateContent.mockResolvedValue({ response: { text: () => '  ' } })
+    const result = await suggestFieldName('key', 'text', 'ctx', [])
+    expect(result).toBeNull()
   })
 })

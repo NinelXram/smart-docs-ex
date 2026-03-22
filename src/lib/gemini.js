@@ -56,3 +56,26 @@ export async function extractVariables(apiKey, content) {
     }
   }
 }
+
+/**
+ * Ask Gemini to suggest a camelCase field name for the selected text.
+ * Returns null on failure or invalid response.
+ * @param {string} apiKey
+ * @param {string} selectedText
+ * @param {string} surroundingContext
+ * @param {string[]} existingFields
+ * @returns {Promise<string | null>}
+ */
+export async function suggestFieldName(apiKey, selectedText, surroundingContext, existingFields) {
+  const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFields.join(', ')}]. Suggest a concise camelCase field name for the selected text. Return only the field name, nothing else.`
+
+  try {
+    const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
+    const result = await model.generateContent(prompt)
+    const raw = result.response.text().trim()
+    if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(raw)) return raw
+    return null
+  } catch {
+    return null
+  }
+}
