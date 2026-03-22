@@ -116,6 +116,7 @@ function insertInParagraph(para, selectedText, fieldName) {
  */
 export function insertDocx(binary, selectedText, paragraphIndex, fieldName) {
   const zip = new PizZip(binary)
+  if (!zip.files['word/document.xml']) return { error: 'no_body' }
   const xmlText = zip.files['word/document.xml'].asText()
 
   const parser = new DOMParser()
@@ -126,7 +127,7 @@ export function insertDocx(binary, selectedText, paragraphIndex, fieldName) {
 
   const paras = collectBodyParagraphs(bodies[0])
 
-  if (paragraphIndex >= paras.length) return { error: 'paragraph_index_out_of_range' }
+  if (paragraphIndex < 0 || paragraphIndex >= paras.length) return { error: 'paragraph_index_out_of_range' }
 
   const err = insertInParagraph(paras[paragraphIndex], selectedText, fieldName)
   if (err) return { error: err }

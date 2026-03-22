@@ -104,4 +104,18 @@ describe('insertDocx', () => {
     const result = insertDocx(binary, 'Only one', 5, 'Field')
     expect(result.error).toBe('paragraph_index_out_of_range')
   })
+
+  it('returns error for negative paragraphIndex', () => {
+    const binary = buildDocx(['Only one paragraph.'])
+    const result = insertDocx(binary, 'Only one', -1, 'Field')
+    expect(result.error).toBe('paragraph_index_out_of_range')
+  })
+
+  it('returns error when word/document.xml is missing', () => {
+    const zip = new PizZip()
+    zip.file('word/styles.xml', '<w:styles/>')
+    const binary = zip.generate({ type: 'arraybuffer' })
+    const result = insertDocx(binary, 'anything', 0, 'Field')
+    expect(result.error).toBe('no_body')
+  })
 })
