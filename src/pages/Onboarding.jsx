@@ -1,0 +1,56 @@
+import { useState } from 'react'
+import { testConnection } from '../lib/gemini.js'
+import { saveApiKey } from '../lib/storage.js'
+
+export default function Onboarding({ onSuccess }) {
+  const [key, setKey] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const handleSubmit = async e => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await testConnection(key.trim())
+      await saveApiKey(key.trim())
+      onSuccess(key.trim())
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-screen p-6 gap-6">
+      <div className="text-center">
+        <h1 className="text-lg font-bold text-white">Doc Template Agent</h1>
+        <p className="text-xs text-gray-400 mt-1">Enter your Gemini API key to get started</p>
+      </div>
+      <form onSubmit={handleSubmit} className="w-full flex flex-col gap-3">
+        <input
+          type="text"
+          value={key}
+          onChange={e => setKey(e.target.value)}
+          placeholder="Gemini API key"
+          className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
+        />
+        {error && (
+          <p className="text-xs text-red-400">{error}</p>
+        )}
+        <button
+          type="submit"
+          disabled={loading || !key.trim()}
+          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded transition-colors"
+        >
+          {loading ? 'Testing…' : 'Test Connection'}
+        </button>
+      </form>
+      <p className="text-xs text-gray-500 text-center">
+        Get a free key at{' '}
+        <span className="text-blue-400">aistudio.google.com</span>
+      </p>
+    </div>
+  )
+}
