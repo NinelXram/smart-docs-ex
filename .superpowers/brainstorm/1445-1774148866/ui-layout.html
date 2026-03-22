@@ -1,0 +1,75 @@
+<h2>Side Panel UI Layout</h2>
+<p class="subtitle">How the 4-step workflow looks inside the Chrome side panel (~400px wide)</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="layout-wizard" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1e1e2e;padding:12px;border-radius:6px;font-family:monospace;font-size:11px;">
+      <div style="background:#2a2a3e;border-radius:4px;padding:6px 10px;margin-bottom:8px;display:flex;gap:8px;align-items:center;">
+        <span style="color:#818cf8;font-weight:bold;">📄 Doc Template Agent</span>
+        <span style="margin-left:auto;color:#6b7280;font-size:10px;">API ✓</span>
+      </div>
+      <!-- Step indicators -->
+      <div style="display:flex;gap:4px;margin-bottom:10px;padding:0 4px;">
+        <div style="flex:1;height:4px;background:#818cf8;border-radius:2px;"></div>
+        <div style="flex:1;height:4px;background:#374151;border-radius:2px;"></div>
+        <div style="flex:1;height:4px;background:#374151;border-radius:2px;"></div>
+        <div style="flex:1;height:4px;background:#374151;border-radius:2px;"></div>
+      </div>
+      <div style="color:#a5b4fc;font-size:10px;margin-bottom:8px;">STEP 1 — UPLOAD & SCAN</div>
+      <!-- Drop zone -->
+      <div style="border:1.5px dashed #4b5563;border-radius:6px;padding:20px;text-align:center;margin-bottom:8px;">
+        <div style="font-size:20px;margin-bottom:4px;">⬆️</div>
+        <div style="color:#9ca3af;font-size:10px;">Drop PDF, DOCX, or XLSX here</div>
+        <div style="color:#6b7280;font-size:9px;margin-top:2px;">or click to browse</div>
+      </div>
+      <!-- Detected vars -->
+      <div style="color:#9ca3af;font-size:10px;margin-bottom:4px;">AI Detected Variables</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        <span style="background:#312e81;color:#a5b4fc;padding:2px 6px;border-radius:10px;font-size:9px;">ClientName</span>
+        <span style="background:#312e81;color:#a5b4fc;padding:2px 6px;border-radius:10px;font-size:9px;">EffectiveDate</span>
+        <span style="background:#312e81;color:#a5b4fc;padding:2px 6px;border-radius:10px;font-size:9px;">ContractValue</span>
+        <span style="background:#1e3a2f;color:#6ee7b7;padding:2px 6px;border-radius:10px;font-size:9px;">+ Add Variable</span>
+      </div>
+      <div style="margin-top:10px;background:#818cf8;color:#fff;text-align:center;padding:5px;border-radius:4px;font-size:10px;">Next: Review →</div>
+    </div>
+    <div class="card-body">
+      <h3>Wizard Layout (Steps at top)</h3>
+      <p>4-step progress bar at top. Each step fills the panel below. Clean, linear flow. User always knows where they are.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="layout-tabs" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1e1e2e;padding:12px;border-radius:6px;font-family:monospace;font-size:11px;">
+      <div style="background:#2a2a3e;border-radius:4px;padding:6px 10px;margin-bottom:8px;display:flex;gap:8px;align-items:center;">
+        <span style="color:#818cf8;font-weight:bold;">📄 Doc Template Agent</span>
+      </div>
+      <!-- Tab bar -->
+      <div style="display:flex;border-bottom:1px solid #374151;margin-bottom:10px;">
+        <div style="padding:4px 8px;color:#818cf8;border-bottom:2px solid #818cf8;font-size:9px;">Upload</div>
+        <div style="padding:4px 8px;color:#6b7280;font-size:9px;">Review</div>
+        <div style="padding:4px 8px;color:#6b7280;font-size:9px;">Library</div>
+        <div style="padding:4px 8px;color:#6b7280;font-size:9px;">Generate</div>
+      </div>
+      <!-- Content -->
+      <div style="border:1.5px dashed #4b5563;border-radius:6px;padding:20px;text-align:center;margin-bottom:8px;">
+        <div style="font-size:20px;margin-bottom:4px;">⬆️</div>
+        <div style="color:#9ca3af;font-size:10px;">Drop PDF, DOCX, or XLSX here</div>
+        <div style="color:#6b7280;font-size:9px;margin-top:2px;">or click to browse</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        <span style="background:#312e81;color:#a5b4fc;padding:2px 6px;border-radius:10px;font-size:9px;">ClientName</span>
+        <span style="background:#312e81;color:#a5b4fc;padding:2px 6px;border-radius:10px;font-size:9px;">EffectiveDate</span>
+        <span style="background:#1e3a2f;color:#6ee7b7;padding:2px 6px;border-radius:10px;font-size:9px;">+ Add</span>
+      </div>
+      <div style="margin-top:10px;background:#818cf8;color:#fff;text-align:center;padding:5px;border-radius:4px;font-size:10px;">Scan Document →</div>
+    </div>
+    <div class="card-body">
+      <h3>Tab Layout (Always visible nav)</h3>
+      <p>Tabs across the top for all 4 sections. User can jump between Library and Generate freely. Less guided, more flexible.</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:20px">My recommendation: <strong>Wizard Layout</strong> — the step-by-step flow is intentional (you must scan before you can review). Tabs encourage skipping steps and add confusion for new users.</p>

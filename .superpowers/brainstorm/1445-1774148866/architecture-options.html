@@ -1,0 +1,44 @@
+<h2>Which architecture approach fits best?</h2>
+<p class="subtitle">Three ways to structure the Chrome Extension internals</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>All-in-One Side Panel <span style="font-size:0.75em;color:#4ade80;">Recommended</span></h3>
+      <p>Everything lives in the React side panel: file parsing (PDF.js / mammoth / xlsx), Gemini API calls, template storage, and form generation. One stable context, no message passing.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Simplest codebase</li><li>Stable context (no SW termination)</li><li>Easy to debug</li><li>Full DOM access everywhere</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>All logic in one place</li><li>No background tasks</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Side Panel + Service Worker</h3>
+      <p>React side panel handles UI and file parsing. Service worker handles Gemini API calls and storage logic. Message passing between them.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Standard MV3 pattern</li><li>API key never exposed in panel</li><li>Clean separation of concerns</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>SW can terminate mid-request (MV3 bug)</li><li>Message passing boilerplate</li><li>Harder to debug</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Side Panel + Offscreen + Service Worker</h3>
+      <p>Three separate contexts: UI in panel, heavy file processing in an offscreen document, Gemini calls via service worker. Maximum isolation.</p>
+      <div class="pros-cons" style="margin-top:10px">
+        <div class="pros"><h4>Pros</h4><ul><li>Maximum isolation</li><li>Theoretically cleanest</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>3-way message passing complexity</li><li>SW termination still a risk</li><li>Overkill for single-user tool</li><li>Much harder to build and maintain</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:24px">My recommendation: <strong>Option A</strong> — for a single-user local tool with user-triggered actions only, the added complexity of B or C solves problems you won't have. The side panel is a stable, persistent context that handles everything cleanly.</p>

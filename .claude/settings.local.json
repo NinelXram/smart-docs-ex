@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(git add:*)",
+      "Bash(npm test:*)",
+      "Bash(node -e \"const fs=require\\(''fs''\\); console.log\\(''dist/icons:'', fs.readdirSync\\(''dist/icons''\\)\\); try{console.log\\(''public/icons:'', fs.readdirSync\\(''public/icons''\\)\\)}catch\\(e\\){console.log\\(''public/icons: empty or missing''\\)}\")",
+      "Bash(node -e \":*)"
+    ]
+  }
+}
