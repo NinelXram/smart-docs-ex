@@ -29,12 +29,6 @@ function copyExtensionAssets() {
       copyFileSync('manifest.json', 'dist/manifest.json')
       copyFileSync('background.js', 'dist/background.js')
 
-      // Copy PDF.js worker so it's accessible via chrome.runtime.getURL
-      const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs'
-      if (existsSync(workerSrc)) {
-        copyFileSync(workerSrc, 'dist/pdf.worker.min.mjs')
-      }
-
       // Placeholder icons (replace with real PNGs before publishing)
       ;['icon16.png', 'icon48.png', 'icon128.png'].forEach(name => {
         const dest = `dist/icons/${name}`

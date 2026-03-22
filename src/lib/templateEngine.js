@@ -1,5 +1,3 @@
-import { jsPDF } from 'jspdf'
-import { Document, Packer, Paragraph, TextRun } from 'docx'
 import * as XLSX from 'xlsx'
 
 /**
@@ -52,27 +50,16 @@ function countOccurrences(text, pattern) {
   return count
 }
 
-/**
- * @param {string} content
- * @returns {Promise<Blob>}
- */
-export async function generatePdf(content) {
-  const doc = new jsPDF()
-  const lines = doc.splitTextToSize(content, 180)
-  doc.text(lines, 15, 15)
-  return doc.output('blob')
+// Stubs for removed jspdf / docx packages — will be replaced in Task 8.
+
+/** @returns {Promise<Blob>} */
+export async function generatePdf(_content) {
+  throw new Error('PDF generation removed. Use DOCX or XLSX.')
 }
 
-/**
- * @param {string} content  — plain text; paragraphs separated by \n
- * @returns {Promise<Blob>}
- */
-export async function generateDocx(content) {
-  const paragraphs = content
-    .split('\n')
-    .map(line => new Paragraph({ children: [new TextRun(line)] }))
-  const doc = new Document({ sections: [{ children: paragraphs }] })
-  return await Packer.toBlob(doc)
+/** @returns {Promise<Blob>} */
+export async function generateDocx(_content) {
+  throw new Error('generateDocx not yet implemented with new renderer.')
 }
 
 /**
