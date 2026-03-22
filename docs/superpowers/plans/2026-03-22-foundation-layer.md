@@ -1071,7 +1071,7 @@ Expected: FAIL with `Cannot find module`.
 ```js
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const MODEL = 'gemini-1.5-flash'
+const MODEL = 'gemini-flash-latest'
 export const MAX_CHARS = 750_000
 
 function buildPrompt(content) {

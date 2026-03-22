@@ -75,7 +75,7 @@ manifest.json
 
 1. User enters Gemini API key
 2. Extension stores key in `chrome.storage.local`
-3. "Test Connection" calls `gemini-1.5-flash` with a minimal prompt
+3. "Test Connection" calls `gemini-flash-latest` with a minimal prompt
 4. Success → proceed to main UI; Failure → inline error with guidance
 
 ### Upload & Scan (Step 1)
