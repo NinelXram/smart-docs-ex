@@ -1,4 +1,5 @@
 import PizZip from 'pizzip'
+import * as _XLSX from 'xlsx'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const XML_NS = 'http://www.w3.org/XML/1998/namespace'
@@ -138,4 +139,28 @@ export function insertDocx(binary, selectedText, paragraphIndex, fieldName) {
 
   const newBinary = zip.generate({ type: 'arraybuffer' })
   return { binary: newBinary }
+}
+
+/**
+ * Insert {{fieldName}} into an XLSX binary at the specified cell.
+ * @param {ArrayBuffer} binary
+ * @param {string} cellAddress — format "SheetName!ColRow" e.g. "Sheet1!B3"
+ * @param {string} fieldName
+ * @returns {{ binary: ArrayBuffer } | { error: string }}
+ */
+export function insertXlsx(binary, cellAddress, fieldName) {
+  const bangIdx = cellAddress.indexOf('!')
+  if (bangIdx === -1) return { error: 'invalid_cell_address' }
+
+  const sheetName = cellAddress.slice(0, bangIdx)
+  const cellRef = cellAddress.slice(bangIdx + 1)
+
+  const wb = _XLSX.read(binary, { type: 'array' })
+  const ws = wb.Sheets[sheetName]
+  if (!ws) return { error: 'sheet_not_found' }
+
+  ws[cellRef] = { t: 's', v: `{{${fieldName}}}` }
+
+  const buf = _XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  return { binary: buf.buffer ?? buf }
 }

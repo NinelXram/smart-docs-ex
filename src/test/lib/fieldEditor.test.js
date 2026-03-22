@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import PizZip from 'pizzip'
-import { insertDocx } from '../../lib/fieldEditor.js'
+import * as XLSX from 'xlsx'
+import { insertDocx, insertXlsx } from '../../lib/fieldEditor.js'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 
@@ -117,5 +118,57 @@ describe('insertDocx', () => {
     const binary = zip.generate({ type: 'arraybuffer' })
     const result = insertDocx(binary, 'anything', 0, 'Field')
     expect(result.error).toBe('no_body')
+  })
+})
+
+function buildXlsx(sheets) {
+  // sheets: { sheetName: { cellRef: value } }
+  const wb = XLSX.utils.book_new()
+  for (const [name, cells] of Object.entries(sheets)) {
+    const ws = {}
+    let maxR = 0, maxC = 0
+    for (const [ref, val] of Object.entries(cells)) {
+      const decoded = XLSX.utils.decode_cell(ref)
+      maxR = Math.max(maxR, decoded.r)
+      maxC = Math.max(maxC, decoded.c)
+      ws[ref] = { t: 's', v: String(val) }
+    }
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } })
+    XLSX.utils.book_append_sheet(wb, ws, name)
+  }
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  return buf.buffer ?? buf
+}
+
+function readXlsxCell(binary, sheetName, cellRef) {
+  const wb = XLSX.read(binary, { type: 'array' })
+  return wb.Sheets[sheetName]?.[cellRef]?.v
+}
+
+describe('insertXlsx', () => {
+  it('replaces cell value with {{fieldName}}', () => {
+    const binary = buildXlsx({ Sheet1: { B3: '$75,000' } })
+    const result = insertXlsx(binary, 'Sheet1!B3', 'ContractValue')
+    expect(result.error).toBeUndefined()
+    expect(readXlsxCell(result.binary, 'Sheet1', 'B3')).toBe('{{ContractValue}}')
+  })
+
+  it('preserves cell type as string', () => {
+    const binary = buildXlsx({ Sheet1: { A1: '2024-01-01' } })
+    const result = insertXlsx(binary, 'Sheet1!A1', 'EffectiveDate')
+    const wb = XLSX.read(result.binary, { type: 'array' })
+    expect(wb.Sheets['Sheet1']['A1'].t).toBe('s')
+  })
+
+  it('returns error for invalid cell address format', () => {
+    const binary = buildXlsx({ Sheet1: { A1: 'x' } })
+    const result = insertXlsx(binary, 'B3', 'Field') // missing sheet name
+    expect(result.error).toBe('invalid_cell_address')
+  })
+
+  it('returns error when sheet is not found', () => {
+    const binary = buildXlsx({ Sheet1: { A1: 'x' } })
+    const result = insertXlsx(binary, 'MissingSheet!A1', 'Field')
+    expect(result.error).toBe('sheet_not_found')
   })
 })
