@@ -52,4 +52,20 @@ describe('Onboarding', () => {
     fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
     expect(screen.getByRole('button', { name: /testing/i })).toBeDisabled()
   })
+
+  it('shows error and does not call onSuccess when saveApiKey throws', async () => {
+    gemini.testConnection.mockResolvedValue(true)
+    storage.saveApiKey.mockRejectedValue(new Error('Storage quota exceeded'))
+    const onSuccess = vi.fn()
+    render(<Onboarding onSuccess={onSuccess} />)
+    fireEvent.change(screen.getByPlaceholderText(/api key/i), { target: { value: 'my-key' } })
+    fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+    await waitFor(() => expect(screen.getByText(/storage quota exceeded/i)).toBeInTheDocument())
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
+
+  it('submit button is disabled when key input is empty', () => {
+    render(<Onboarding onSuccess={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /test connection/i })).toBeDisabled()
+  })
 })

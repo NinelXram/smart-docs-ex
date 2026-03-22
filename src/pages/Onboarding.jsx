@@ -16,7 +16,7 @@ export default function Onboarding({ onSuccess }) {
       await saveApiKey(key.trim())
       onSuccess(key.trim())
     } catch (err) {
-      setError(err.message)
+      setError(err.message ?? 'An unexpected error occurred.')
     } finally {
       setLoading(false)
     }
@@ -30,7 +30,7 @@ export default function Onboarding({ onSuccess }) {
       </div>
       <form onSubmit={handleSubmit} className="w-full flex flex-col gap-3">
         <input
-          type="text"
+          type="password"
           value={key}
           onChange={e => setKey(e.target.value)}
           placeholder="Gemini API key"
