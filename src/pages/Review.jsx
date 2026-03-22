@@ -74,7 +74,14 @@ export default function Review({ rawContent, format, initialVariables, onSave, o
 
   const handleConfirmAdd = () => {
     if (!addLabel.trim() || !pendingAdd) return
-    setVariables(prev => [...prev, { name: addLabel.trim(), marker: pendingAdd.marker }])
+    const trimmedLabel = addLabel.trim()
+    setVariables(prev => {
+      if (prev.some(v => v.name === trimmedLabel)) {
+        onToast({ message: `Variable "${trimmedLabel}" already exists`, type: 'error' })
+        return prev
+      }
+      return [...prev, { name: trimmedLabel, marker: pendingAdd.marker }]
+    })
     setPendingAdd(null)
     setAddLabel('')
   }

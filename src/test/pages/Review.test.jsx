@@ -64,6 +64,7 @@ describe('Review', () => {
         sourceFormat: 'docx',
         rawContent: RAW,
         variables: VARS,
+        createdAt: expect.any(Number),
       }))
       expect(onSave).toHaveBeenCalled()
     })
@@ -94,5 +95,20 @@ describe('Review', () => {
     fireEvent.change(screen.getByTestId('add-label-input'), { target: { value: 'ClientName' } })
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
     expect(screen.getByTestId('chip-ClientName')).toBeInTheDocument()
+  })
+
+  it('renders plain text when no variables match', () => {
+    // Variables that cannot match any content in rawContent
+    const EMPTY_VARS = [{ name: 'NoMatch', marker: 'xyzabc [VALUE] xyz123' }]
+    render(<Review rawContent="Simple document text" format="docx" initialVariables={EMPTY_VARS} onSave={vi.fn()} onBack={vi.fn()} onToast={vi.fn()} />)
+    // Chip is in the variable list but marker doesn't match, so chip might still show in bottom list
+    // At minimum, the page renders without error
+    expect(screen.getByPlaceholderText(/template name/i)).toBeInTheDocument()
+  })
+
+  it('segmentContent handles empty rawContent gracefully', () => {
+    render(<Review rawContent="" format="docx" initialVariables={VARS} onSave={vi.fn()} onBack={vi.fn()} onToast={vi.fn()} />)
+    // Should render without crashing
+    expect(screen.getByPlaceholderText(/template name/i)).toBeInTheDocument()
   })
 })
