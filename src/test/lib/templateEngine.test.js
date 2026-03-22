@@ -1,90 +1,89 @@
 import { describe, it, expect, vi } from 'vitest'
 
+vi.mock('pizzip', () => {
+  const PizZip = vi.fn().mockImplementation(() => ({
+    generate: vi.fn(() => new Uint8Array([1, 2, 3])),
+  }))
+  return { default: PizZip }
+})
+
+vi.mock('docxtemplater', () => {
+  const Docxtemplater = vi.fn().mockImplementation(() => ({
+    render: vi.fn(),
+    getZip: vi.fn().mockReturnValue({
+      generate: vi.fn().mockResolvedValue(new Blob(['docx'])),
+    }),
+  }))
+  return { default: Docxtemplater }
+})
+
 vi.mock('xlsx', () => ({
+  read: vi.fn(),
+  write: vi.fn(() => new Uint8Array([4, 5, 6])),
   utils: {
     book_new: vi.fn(() => ({})),
     aoa_to_sheet: vi.fn(() => ({})),
     book_append_sheet: vi.fn(),
   },
-  write: vi.fn(() => new Uint8Array([1, 2, 3])),
 }))
 
-import {
-  injectVariables,
-  generatePdf,
-  generateDocx,
-  generateXlsx,
-} from '../../lib/templateEngine.js'
-
-const RAW = 'This agreement is made with [VALUE] hereinafter, effective as of [VALUE] between parties.'
-
-describe('injectVariables', () => {
-  const variables = [
-    { name: 'ClientName', marker: 'made with [VALUE] hereinafter' },
-    { name: 'EffectiveDate', marker: 'effective as of [VALUE] between' },
-  ]
-  const values = { ClientName: 'Acme Corp', EffectiveDate: '2026-01-01' }
-
-  it('replaces [VALUE] with the provided value in each marker', () => {
-    const { content, warnings } = injectVariables(RAW, variables, values)
-    expect(content).toContain('made with Acme Corp hereinafter')
-    expect(content).toContain('effective as of 2026-01-01 between')
-    expect(warnings).toHaveLength(0)
-  })
-
-  it('uses empty string when value is not provided', () => {
-    const { content } = injectVariables(RAW, variables, { ClientName: 'Acme Corp' })
-    expect(content).toContain('effective as of  between')
-  })
-
-  it('warns and skips a variable whose marker is not found', () => {
-    const { warnings } = injectVariables(
-      'unrelated content',
-      [{ name: 'Missing', marker: 'not [VALUE] here' }],
-      { Missing: 'x' }
-    )
-    expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('"Missing"')
-    expect(warnings[0]).toContain('not found')
-  })
-
-  it('warns and skips a variable whose marker has no [VALUE] token', () => {
-    const { warnings } = injectVariables(
-      RAW,
-      [{ name: 'Bad', marker: 'agreement is made with' }],
-      { Bad: 'x' }
-    )
-    expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('malformed marker')
-  })
-
-  it('replaces first occurrence and warns when marker is duplicated', () => {
-    const content = 'word [VALUE] end. word [VALUE] end.'
-    const { content: result, warnings } = injectVariables(
-      content,
-      [{ name: 'Dup', marker: 'word [VALUE] end' }],
-      { Dup: 'X' }
-    )
-    expect(result).toBe('word X end. word [VALUE] end.')
-    expect(warnings[0]).toContain('2 times')
-  })
-})
-
-describe('generatePdf', () => {
-  it('throws — PDF generation has been removed', async () => {
-    await expect(generatePdf('some content')).rejects.toThrow('PDF generation removed')
-  })
-})
+import { generateDocx, generateXlsx, downloadBlob } from '../../lib/templateEngine.js'
+import * as XLSX from 'xlsx'
 
 describe('generateDocx', () => {
-  it('throws — not yet implemented with new renderer', async () => {
-    await expect(generateDocx('some content')).rejects.toThrow('not yet implemented')
+  it('returns a Blob', async () => {
+    const buffer = new ArrayBuffer(8)
+    const blob = await generateDocx(buffer, { ClientName: 'Acme Corp' })
+    expect(blob).toBeInstanceOf(Blob)
   })
 })
 
 describe('generateXlsx', () => {
   it('returns a Blob', async () => {
-    const blob = await generateXlsx('line1\nline2')
+    XLSX.read.mockReturnValue({
+      SheetNames: ['Sheet1'],
+      Sheets: {
+        Sheet1: {
+          '!ref': 'A1:A1',
+          A1: { t: 's', v: '{{ClientName}}' },
+        },
+      },
+    })
+    const buffer = new ArrayBuffer(8)
+    const blob = await generateXlsx(buffer, { ClientName: 'Acme Corp' })
     expect(blob).toBeInstanceOf(Blob)
+  })
+
+  it('replaces {{FieldName}} tokens with values', async () => {
+    const sheet = {
+      '!ref': 'A1:B1',
+      A1: { t: 's', v: '{{ClientName}}' },
+      B1: { t: 's', v: 'static value' },
+    }
+    XLSX.read.mockReturnValue({ SheetNames: ['Sheet1'], Sheets: { Sheet1: sheet } })
+    const buffer = new ArrayBuffer(8)
+    await generateXlsx(buffer, { ClientName: 'Acme Corp' })
+    // After generateXlsx, the sheet object is mutated before XLSX.write is called
+    expect(sheet.A1.v).toBe('Acme Corp')
+    expect(sheet.B1.v).toBe('static value') // not a token, unchanged
+  })
+
+  it('does not export injectVariables', async () => {
+    const mod = await import('../../lib/templateEngine.js')
+    expect(mod.injectVariables).toBeUndefined()
+  })
+})
+
+describe('downloadBlob', () => {
+  it('creates an anchor and triggers click', () => {
+    const mockAnchor = { href: '', download: '', click: vi.fn() }
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:url'),
+      revokeObjectURL: vi.fn(),
+    })
+    vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor)
+    downloadBlob(new Blob(['test']), 'output.docx')
+    expect(mockAnchor.download).toBe('output.docx')
+    expect(mockAnchor.click).toHaveBeenCalled()
   })
 })

@@ -1,78 +1,45 @@
+import PizZip from 'pizzip'
+import Docxtemplater from 'docxtemplater'
 import * as XLSX from 'xlsx'
 
 /**
- * Injects variable values into rawContent using marker-based replacement.
- * @param {string} rawContent
- * @param {Array<{name: string, marker: string}>} variables
- * @param {Record<string, string>} values  — keyed by variable name
- * @returns {{ content: string, warnings: string[] }}
+ * Generate a filled DOCX from a binary template with {{tokens}}.
+ * @param {ArrayBuffer} binary — DOCX with {{FieldName}} tokens
+ * @param {Record<string, string>} values — field values keyed by name
+ * @returns {Promise<Blob>}
  */
-export function injectVariables(rawContent, variables, values) {
-  let content = rawContent
-  const warnings = []
-
-  for (const { name, marker } of variables) {
-    const value = values[name] ?? ''
-
-    if (!marker.includes('[VALUE]')) {
-      warnings.push(`Variable "${name}" has a malformed marker (no [VALUE] token) — skipped`)
-      continue
-    }
-
-    const occurrences = countOccurrences(content, marker)
-    if (occurrences === 0) {
-      warnings.push(`Variable "${name}" marker not found in document — skipped`)
-      continue
-    }
-    if (occurrences > 1) {
-      warnings.push(
-        `Variable "${name}" marker appears ${occurrences} times — replaced first occurrence`
-      )
-    }
-
-    // Use indexOf + slice instead of String.replace to avoid special-character
-    // corruption (e.g. '$5,000' contains '$' which String.replace treats specially).
-    const pos = content.indexOf(marker)
-    const filledMarker = marker.slice(0, marker.indexOf('[VALUE]')) + value + marker.slice(marker.indexOf('[VALUE]') + '[VALUE]'.length)
-    content = content.slice(0, pos) + filledMarker + content.slice(pos + marker.length)
-  }
-
-  return { content, warnings }
-}
-
-function countOccurrences(text, pattern) {
-  let count = 0
-  let pos = 0
-  while ((pos = text.indexOf(pattern, pos)) !== -1) {
-    count++
-    pos += pattern.length
-  }
-  return count
-}
-
-// Stubs for removed jspdf / docx packages — will be replaced in Task 8.
-
-/** @returns {Promise<Blob>} */
-export async function generatePdf(_content) {
-  throw new Error('PDF generation removed. Use DOCX or XLSX.')
-}
-
-/** @returns {Promise<Blob>} */
-export async function generateDocx(_content) {
-  throw new Error('generateDocx not yet implemented with new renderer.')
+export async function generateDocx(binary, values) {
+  const zip = new PizZip(binary)
+  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true })
+  doc.render(values)
+  return await doc.getZip().generate({ type: 'blob' })
 }
 
 /**
- * @param {string} content  — rows separated by \n, columns by comma (CSV-like)
+ * Generate a filled XLSX from a binary template with {{tokens}} in cells.
+ * @param {ArrayBuffer} binary — XLSX with {{FieldName}} token cells
+ * @param {Record<string, string>} values — field values keyed by name
  * @returns {Promise<Blob>}
  */
-export async function generateXlsx(content) {
-  const rows = content.split('\n').map(line => [line])
-  const wb = XLSX.utils.book_new()
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
-  const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-  return new Blob([buffer], {
+export async function generateXlsx(binary, values) {
+  const wb = XLSX.read(binary, { type: 'array' })
+
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName]
+    for (const cellRef in ws) {
+      if (cellRef.startsWith('!')) continue
+      const cell = ws[cellRef]
+      if (cell && cell.t === 's' && typeof cell.v === 'string') {
+        const match = cell.v.match(/^\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}$/)
+        if (match && match[1] in values) {
+          cell.v = values[match[1]]
+        }
+      }
+    }
+  }
+
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  return new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
 }
