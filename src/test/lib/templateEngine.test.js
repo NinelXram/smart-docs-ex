@@ -1,20 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('jspdf', () => ({
-  jsPDF: vi.fn().mockImplementation(() => ({
-    splitTextToSize: vi.fn(() => ['line1', 'line2']),
-    text: vi.fn(),
-    output: vi.fn(() => new Blob(['pdf'], { type: 'application/pdf' })),
-  })),
-}))
-
-vi.mock('docx', () => ({
-  Document: vi.fn(),
-  Packer: { toBlob: vi.fn().mockResolvedValue(new Blob(['docx'])) },
-  Paragraph: vi.fn(),
-  TextRun: vi.fn(),
-}))
-
 vi.mock('xlsx', () => ({
   utils: {
     book_new: vi.fn(() => ({})),
@@ -86,16 +71,14 @@ describe('injectVariables', () => {
 })
 
 describe('generatePdf', () => {
-  it('returns a Blob', async () => {
-    const blob = await generatePdf('some content')
-    expect(blob).toBeInstanceOf(Blob)
+  it('throws — PDF generation has been removed', async () => {
+    await expect(generatePdf('some content')).rejects.toThrow('PDF generation removed')
   })
 })
 
 describe('generateDocx', () => {
-  it('returns a Blob', async () => {
-    const blob = await generateDocx('some content')
-    expect(blob).toBeInstanceOf(Blob)
+  it('throws — not yet implemented with new renderer', async () => {
+    await expect(generateDocx('some content')).rejects.toThrow('not yet implemented')
   })
 })
 
