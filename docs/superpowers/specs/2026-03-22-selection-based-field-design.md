@@ -58,8 +58,8 @@ At generate time, docxtemplater (DOCX) or SheetJS (XLSX) fills `{{FieldName}}` t
 
 | File | Status | Responsibility |
 |---|---|---|
-| `src/lib/renderers/docx.js` | New | mammoth: DOCX ArrayBuffer → `{ html, binary }` |
-| `src/lib/renderers/xlsx.js` | New | SheetJS: XLSX ArrayBuffer → `{ html, binary }` (cells have `data-cell-address` attrs) |
+| `src/lib/renderers/docx.js` | New | mammoth: DOCX ArrayBuffer → `{ html: string, binary: ArrayBuffer }`. `binary` is the original input buffer passed through unchanged (mammoth does not return binary; it only produces HTML). |
+| `src/lib/renderers/xlsx.js` | New | SheetJS: XLSX ArrayBuffer → `{ html: string, binary: ArrayBuffer }` (cells have `data-cell-address` attrs). `binary` is the original input buffer passed through unchanged. |
 | `src/lib/renderers/index.js` | New | `renderFile(file) → Promise<{ html, binary, format }>` — dispatches to docx or xlsx renderer by file extension |
 | `src/lib/fieldEditor.js` | New | `insertDocx(binary, selectedText, paragraphIndex, fieldName)` and `insertXlsx(binary, cellAddress, fieldName)` |
 | `src/lib/gemini.js` | Modified | Add `suggestFieldName(apiKey, selectedText, surroundingContext, existingFields)` |
@@ -68,8 +68,10 @@ At generate time, docxtemplater (DOCX) or SheetJS (XLSX) fills `{{FieldName}}` t
 | `src/lib/parsers/docx.js` | Deleted | Replaced by `renderers/docx.js` |
 | `src/lib/parsers/xlsx.js` | Deleted | Replaced by `renderers/xlsx.js` |
 | `src/lib/parsers/index.js` | Deleted | Replaced by `renderers/index.js` |
+| `src/lib/parsers/pdf.js` | Deleted | PDF output removed from this iteration |
 | `src/pages/Upload.jsx` | Modified | No Gemini call on upload; calls `renderFile(file)` and passes `{ html, binary, format, fileName, fields: [] }` to Review |
-| `src/pages/Review.jsx` | Replaced | Native document viewer + selection/click popover + field chip overlay |
+| `src/pages/Review.jsx` | Replaced | Native document viewer + selection/click popover + field chip overlay. Props: `{ html, binary, format, fileName, fields, apiKey, onSave, onBack }` |
+| `src/pages/Generate.jsx` | Modified | Remove `injectVariables` + format selector; call `generateDocx(binary, values)` or `generateXlsx(binary, values)` based on `template.sourceFormat`; output format always equals source format |
 | `src/test/lib/renderers/docx.test.js` | New | Renderer unit tests |
 | `src/test/lib/renderers/xlsx.test.js` | New | Renderer unit tests |
 | `src/test/lib/fieldEditor.test.js` | New | Field insertion unit tests |
@@ -77,6 +79,7 @@ At generate time, docxtemplater (DOCX) or SheetJS (XLSX) fills `{{FieldName}}` t
 | `src/test/lib/templateEngine.test.js` | Modified | Update generation tests for docxtemplater + SheetJS |
 | `src/test/pages/Review.test.jsx` | Replaced | Review page interaction tests |
 | `src/test/pages/Upload.test.jsx` | Modified | Remove Gemini call assertions; assert render output passed to Review |
+| `src/test/pages/Generate.test.jsx` | Modified | Update to call `generateDocx(binary, values)` / `generateXlsx(binary, values)`; remove PDF and format-selector assertions |
 
 ---
 
@@ -102,6 +105,7 @@ Onboarding (API key entry and validation) is unchanged from the original design.
 **Rendering:**
 - The `html` string is applied to a `<div ref={viewerRef}>` using a `useEffect` that sets `viewerRef.current.innerHTML = html` directly. React's `dangerouslySetInnerHTML` is not used because scroll position must be preserved across re-renders without unmounting the element.
 - After setting `innerHTML`, a chip overlay pass immediately scans the new DOM for text nodes matching `{{FieldName}}` and replaces them with styled chip elements (color-coded by field index in `fields[]`). Because `innerHTML` is reset before the chip pass on every render, there is no risk of double-replacement.
+- The `useEffect` that sets `innerHTML` and runs the chip pass must declare `[html, fields]` in its dependency array, ensuring it re-runs whenever `html` is updated after a field insertion.
 - Scroll position is preserved by saving `viewerRef.current.scrollTop` before the `innerHTML` assignment and restoring it after the chip pass completes.
 - The panel is vertically scrollable (`overflow-y: auto` on the viewer div).
 
@@ -111,7 +115,7 @@ Onboarding (API key entry and validation) is unchanged from the original design.
 2. On `mouseup`, if the selection is non-collapsed and contains ≥ 3 non-whitespace characters:
    - Validate that anchor and focus nodes belong to the same paragraph element; if not: show inline popover error "Select text within a single paragraph" and return
    - Record `selectedText = selection.toString().trim()`
-   - Compute `paragraphIndex`: call `Array.from(viewerRef.current.querySelectorAll('p'))` to get a flat list of all `<p>` elements in document order (including those inside table cells, matching mammoth's rendering order). `paragraphIndex` is the index of the `<p>` element that contains the anchor node of the selection. On the XML side, `fieldEditor.insertDocx` collects all `<w:p>` elements from `word/document.xml` in document order using a depth-first walk, which matches the order mammoth emits `<p>` elements. Both sides count all paragraphs (body and table-cell) in the same document order, ensuring the index is consistent.
+   - Compute `paragraphIndex`: call `Array.from(viewerRef.current.querySelectorAll('p'))` to get a flat list of all `<p>` elements in document order (including those inside table cells). `paragraphIndex` is the index of the `<p>` element that contains the anchor node of the selection. On the XML side, `fieldEditor.insertDocx` must use an identical traversal scope: collect all `<w:p>` elements that are descendants of `<w:body>` only — explicitly excluding `<w:p>` elements inside `<w:hdr>`, `<w:ftr>`, `<w:footnotes>`, `<w:endnotes>`, and children of `<w:del>` (tracked deletions, which mammoth omits from rendering). mammoth must also be configured to suppress tracked-deletion content (set `includeDefaultStyleMap: true` and avoid rendering revision markup). This ensures the DOM `<p>` count and the XML `<w:p>` count are identical.
    - Dismiss any existing popover
    - Show popover in "loading" state (spinner, Dismiss button only)
    - Call `suggestFieldName(apiKey, selectedText, surroundingContext, existingFields)` asynchronously
@@ -124,7 +128,7 @@ Onboarding (API key entry and validation) is unchanged from the original design.
 2. The target cell's `data-cell-address` attribute (e.g., `"Sheet1!B3"`) is read
 3. `selectedText = cell.textContent.trim()` (the current cell value)
 4. If cell already contains `{{...}}`: show error "This cell is already a field" and return
-5. Show popover in "loading" state; call `suggestFieldName(apiKey, selectedText, surroundingContext, existingFields)` where `surroundingContext` is the text of the 2 surrounding cells in each direction and `existingFields` is the current `fields` array
+5. Show popover in "loading" state; call `suggestFieldName(apiKey, selectedText, surroundingContext, existingFields)` where `surroundingContext` is built from the text content of the 2 adjacent cells in each cardinal direction (left, right, above, below) concatenated with spaces, and `existingFields` is the current `fields` array
 6. When suggestion returns: populate popover input; if suggestion fails: show empty editable input
 
 **On Accept (both formats):**
@@ -144,7 +148,15 @@ Onboarding (API key entry and validation) is unchanged from the original design.
 **Saving:**
 1. User enters a template name (non-empty) and clicks "Save Template"
 2. Validates: name non-empty, at least one field defined
-3. Encodes `binary` as base64 string using: `btoa(String.fromCharCode(...new Uint8Array(binary)))` for ArrayBuffers up to ~10 MB; for larger files, encode in chunks to avoid stack overflow
+3. Encodes `binary` as base64 string using a chunked approach to avoid stack overflow (spread-based `String.fromCharCode(...array)` overflows V8's call stack for buffers above ~128 KB). Use 8 KB chunks:
+   ```js
+   const bytes = new Uint8Array(binary)
+   let str = ''
+   for (let i = 0; i < bytes.length; i += 8192) {
+     str += String.fromCharCode(...bytes.subarray(i, i + 8192))
+   }
+   const base64 = btoa(str)
+   ```
 4. Saves to `chrome.storage.local`
 
 ### Template Storage
@@ -156,7 +168,7 @@ Onboarding (API key entry and validation) is unchanged from the original design.
   "sourceFormat": "docx",
   "binary": "<base64-encoded ArrayBuffer of the modified DOCX/XLSX with {{tokens}}>",
   "fields": ["ClientName", "EffectiveDate", "ContractValue"],
-  "createdAt": 1774148866
+  "createdAt": 1774148866000
 }
 ```
 
@@ -223,7 +235,9 @@ DOCX XML stores paragraph text across multiple `<w:r>` (run) elements. A string 
 
 **Signature:** `suggestFieldName(apiKey: string, selectedText: string, surroundingContext: string, existingFields: string[]) → Promise<string | null>`
 
-**`surroundingContext`:** extracted from `viewerRef.current.textContent` (the rendered document's plain text, HTML tags stripped) — up to 100 characters before and after `selectedText`.
+**`surroundingContext`:**
+- **DOCX:** extracted from `viewerRef.current.textContent` (the rendered document's plain text, HTML tags stripped) — up to 100 characters before and after `selectedText`.
+- **XLSX:** the text content of the 2 adjacent cells in each cardinal direction (left, right, above, below) concatenated with spaces. Computed from the rendered table DOM, not the raw binary.
 
 **Prompt:**
 > "The following text was selected from a document: `"<selectedText>"`. The surrounding context is: `"<context>"`. Fields already defined: `[<existingFields>]`. Suggest a concise camelCase field name for the selected text. Return only the field name, nothing else."
@@ -278,7 +292,7 @@ DOCX XML stores paragraph text across multiple `<w:r>` (run) elements. A string 
 
 - **`renderers/docx.js`:** Given a DOCX ArrayBuffer fixture, assert HTML output contains expected text; assert `binary` is returned unchanged
 - **`renderers/xlsx.js`:** Given an XLSX ArrayBuffer fixture, assert HTML table contains expected cell values; assert cells have `data-cell-address` attributes with correct addresses
-- **`fieldEditor.js` (DOCX):** Given a DOCX binary + selected text + paragraphIndex, assert returned binary contains `{{FieldName}}` and original text is absent; assert run-split text is correctly normalized; assert text-not-found returns error; assert duplicate text in paragraph uses first occurrence
+- **`fieldEditor.js` (DOCX):** Given a DOCX binary + selected text + paragraphIndex, assert returned binary contains `{{FieldName}}` and original text is absent; assert run-split text is correctly normalized; assert partial-run selection (where `selectedText` begins mid-run or ends mid-run) correctly splits and merges the affected runs; assert text-not-found returns error; assert duplicate text in paragraph uses first occurrence
 - **`fieldEditor.js` (XLSX):** Given an XLSX binary + cell address, assert returned binary has `{{FieldName}}` in that cell; assert cell type is preserved as string
 - **`gemini.js` (`suggestFieldName`):** Mock API — assert prompt includes selected text, context, and existing fields; assert invalid response returns `null`; assert network error returns `null`
 - **`templateEngine.js` (`generateDocx`):** `generateDocx(binary: ArrayBuffer, values: Record<string, string>) → Promise<Blob>` — given a DOCX binary with `{{ClientName}}`, assert returned Blob contains the substituted value; assert missing token produces a warning and the field is skipped
@@ -314,3 +328,5 @@ DOCX XML stores paragraph text across multiple `<w:r>` (run) elements. A string 
 | `paragraphIndex` passed to `fieldEditor.insertDocx` | Disambiguates which paragraph to modify when the same text appears in multiple paragraphs |
 | `data-cell-address` on XLSX cells | Stable across re-renders (derived from coordinates, not DOM identity); eliminates need for a separate `cellMap` data structure |
 | Minimum 3 non-whitespace characters to trigger AI | Prevents API calls from accidental or exploratory selections |
+| DOCX run-merging preserves only first run's formatting | When selected text spans runs with different character styles (e.g., bold + italic), only the first run's `<w:rPr>` is kept for the `{{FieldName}}` token. Mixed-style selections will adopt a single style. Accepted trade-off: field tokens are placeholders, not styled content. |
+| `createdAt` stored as milliseconds since epoch | `Date.now()` is used; value is 13 digits (e.g., `1774148866000`). Storage schema examples must use millisecond values. |
