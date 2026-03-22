@@ -16,10 +16,12 @@ export default function App() {
   const [toast, setToast] = useState(null)
 
   useEffect(() => {
-    getApiKey().then(key => {
-      setApiKey(key)
-      setStep(key ? 1 : 0)
-    })
+    getApiKey()
+      .then(key => {
+        setApiKey(key)
+        setStep(key ? 1 : 0)
+      })
+      .catch(() => setStep(0))
   }, [])
 
   if (step === null) {
@@ -69,7 +71,7 @@ export default function App() {
                 onToast={setToast}
               />
             )}
-            {step === 2 && (
+            {step === 2 && scanData && (
               <Review
                 rawContent={scanData.text}
                 format={scanData.format}
