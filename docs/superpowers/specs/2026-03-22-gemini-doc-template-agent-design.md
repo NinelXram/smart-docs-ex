@@ -25,7 +25,7 @@ All logic runs inside the Chrome Side Panel React app — no message passing, no
 |---|---|
 | `sidepanel/` | Full React app: file parsing, Gemini calls, template storage, form generation |
 | `background.js` | Service worker: registers side panel, handles icon click |
-| `manifest.json` | Declares `side_panel`, `storage`, host permissions for Gemini API |
+| `manifest.json` | Declares `side_panel`, `storage`, `unlimitedStorage`, host permissions for Gemini API |
 
 ### Tech Stack
 
@@ -33,11 +33,14 @@ All logic runs inside the Chrome Side Panel React app — no message passing, no
 |---|---|
 | Framework | React 18 + Vite |
 | Styling | Tailwind CSS |
-| AI | `@google/generative-ai` (Gemini 1.5 Flash default, Pro selectable) |
+| AI | `@google/generative-ai` (Gemini 1.5 Flash) |
 | PDF parsing | `pdfjs-dist` |
 | DOCX parsing | `mammoth` |
 | XLSX parsing | `xlsx` |
-| Storage | `chrome.storage.local` |
+| PDF output | `jspdf` |
+| DOCX output | `docx` (npm package) |
+| XLSX output | `xlsx` (write mode, same library as parsing) |
+| Storage | `chrome.storage.local` (`unlimitedStorage` permission) |
 
 ### Folder Structure
 
@@ -79,11 +82,12 @@ manifest.json
 
 1. User drops or selects a file (PDF, DOCX, or XLSX)
 2. Appropriate parser extracts raw text and structural metadata
-3. Extracted content is sent to Gemini with a structured prompt:
+3. Pre-flight check: if extracted text exceeds 750,000 characters (~1M tokens), reject with a "Document too large" error before calling the API. User must use a smaller or trimmed document.
+4. Extracted content is sent to Gemini 1.5 Flash with a structured prompt:
 
-   > *"Analyze this document. Identify all variable fields likely to change across iterations (e.g., names, IDs, dates, amounts). Return a JSON array where each item has: `name` (a short camelCase label) and `marker` (the surrounding text that uniquely identifies this field's position in the document)."*
+   > *"Analyze this document. Identify all variable fields likely to change across iterations (e.g., names, IDs, dates, amounts). Return a JSON array where each item has: `name` (a short camelCase label) and `marker` (a short phrase of 5–10 words from the document that contains the variable's value, with that value replaced by the literal token `[VALUE]`). The `[VALUE]` token must appear exactly once in each marker string. Example: `"agreement is made with [VALUE] hereinafter"`."*
 
-4. Gemini returns:
+5. Gemini returns:
    ```json
    [
      { "name": "ClientName", "marker": "agreement is made with [VALUE] hereinafter" },
@@ -91,7 +95,9 @@ manifest.json
      { "name": "ContractValue", "marker": "total amount of [VALUE] USD" }
    ]
    ```
-5. UI renders document preview with detected fields highlighted as colored chips
+
+   **Injection contract:** At generate time, `templateEngine.js` searches `rawContent` for each marker string (with `[VALUE]` as a literal). If the marker appears more than once (duplicate boilerplate), the first occurrence is replaced and the user is warned. If the marker contains no `[VALUE]` token (malformed response), that variable is skipped and flagged.
+6. UI renders document preview with detected fields highlighted as colored chips
 
 ### Review & Refine (Step 2)
 
@@ -99,13 +105,13 @@ manifest.json
 2. User actions:
    - **Rename:** click chip → edit label inline
    - **Remove:** click × on chip → removes variable
-   - **Add:** highlight text in preview → "Add Variable" button → enter label
+   - **Add:** highlight text in preview → "Add Variable" button → enter label. Implementation: the preview renders `rawContent` as plain text in a `<div>`. `window.getSelection()` captures the selected text. The extension locates the selection in `rawContent` using `indexOf` and builds a marker by taking up to 5 surrounding words on each side, replacing the selected text with `[VALUE]`. If the selected text appears more than once in `rawContent`, the marker may point to an unintended occurrence; the user is warned at generate time via the standard duplicate-marker warning.
 3. User names the template (e.g., "Standard Sales Contract")
 4. User clicks "Save Template"
 
 ### Template Storage (Step 3)
 
-Template saved to `chrome.storage.local`:
+Template saved to `chrome.storage.local` (requires `unlimitedStorage` manifest permission — legal contracts can exceed the default 5 MB quota):
 
 ```json
 {
@@ -128,14 +134,17 @@ Library view lists all saved templates with name, format badge, variable count, 
 2. Extension renders a dynamic form: one labeled input per variable
 3. User fills all fields
 4. User selects output format: **PDF**, **DOCX**, or **XLSX**
-5. `templateEngine.js` injects values at each marker position in the raw content
-6. Output file is generated client-side and downloaded
+5. `templateEngine.js` injects values at each marker position in the raw content (replaces `marker` with marker string where `[VALUE]` is substituted with the user's input)
+6. Output file is serialized and downloaded:
+   - **DOCX:** `docx` npm package rebuilds the document as a `.docx` file from the injected text
+   - **XLSX:** `xlsx` (write mode) rebuilds the spreadsheet from the injected content
+   - **PDF:** `jspdf` renders the injected plain text into a `.pdf` file. Structural metadata from the parser (paragraph breaks, line breaks) is preserved in the output where possible; visual fidelity beyond that is explicitly out of scope (see Constraints)
 
 ---
 
 ## UI Layout
 
-**Wizard layout** with a 4-segment progress bar at the top of the side panel. Each step occupies the full panel below. Users cannot skip steps (scan must complete before review, review must save before generate).
+**Wizard layout** with a 4-segment progress bar at the top of the side panel covering Steps 1–4 (Upload, Review, Library, Generate). Onboarding (API key setup) is a pre-wizard gate shown only on first launch; it is not part of the progress bar. Each wizard step occupies the full panel below. Users cannot skip steps (scan must complete before review, review must save before generate).
 
 **Side panel width:** ~400px (standard Chrome side panel)
 
@@ -152,7 +161,7 @@ Library view lists all saved templates with name, format badge, variable count, 
 ### File Parsing Errors
 - Unsupported format → rejected at drop, before any processing
 - Corrupted file → error state on Upload step, prompt to try another file
-- File exceeds Gemini context window → warning with option to switch to Gemini 1.5 Pro
+- Extracted text exceeds 750,000 characters → hard stop before API call with "Document too large" message; user must provide a smaller file
 
 ### Gemini Response Errors
 - Malformed JSON → retry once with stricter prompt; on second failure, send user to manual variable entry mode
@@ -162,7 +171,9 @@ Library view lists all saved templates with name, format badge, variable count, 
 - `chrome.storage.local` quota exceeded → prompt user to delete old templates before saving
 
 ### Generate / Download Errors
-- Marker not found in document (injection failure) → highlight problematic variable in form, skip it in output, warn user with specific field name
+- Marker not found in document → highlight the problematic variable in the form, skip it in output, warn user with specific field name
+- Marker found but contains no `[VALUE]` token (malformed Gemini response) → same treatment as above
+- Marker appears more than once → replace first occurrence, warn user that duplicate markers exist
 
 ---
 
@@ -190,9 +201,13 @@ Library view lists all saved templates with name, format badge, variable count, 
 | Decision | Rationale |
 |---|---|
 | All-in-one side panel (no SW for logic) | MV3 service worker termination risk; no background tasks needed |
-| `chrome.storage.local` only | Single-user, local-first; no sync complexity |
-| Gemini Flash default | Low cost, fast; user can switch to Pro for large/complex documents |
-| No pixel-perfect document rendering | Good-enough preview with highlights is sufficient; avoids PDF/DOCX rendering complexity |
-| User-selectable output format | User choice at generation time; source format is not necessarily the target |
+| `chrome.storage.local` + `unlimitedStorage` | Single-user, local-first; default 5 MB quota is too small for contract text |
+| API key stored in `chrome.storage.local` | Acceptable for a single-user local extension; key obfuscation is out of scope. The key is only accessible to extension JS, not web pages. |
+| Gemini 1.5 Flash only (no model selection) | Flash and Pro share the same 1M token context window; model switching adds UI complexity with no functional benefit for this use case |
+| 750K character pre-flight limit | Conservative threshold (~1M tokens) to avoid a paid failed API call |
+| Output via `jspdf` / `docx` / `xlsx` write mode | Each handles its target format client-side; no server required |
+| Marker injection uses first occurrence for duplicates | Deterministic behavior; user is warned rather than silently producing wrong output |
+| No pixel-perfect document rendering | Good-enough plain-text preview with highlights is sufficient; avoids PDF/DOCX rendering complexity |
+| User-selectable output format | Source format is not necessarily the target format |
 | Wizard UI (not tabs) | Enforces correct ordering (scan → review → save → generate) |
 | No automated extension E2E | Chrome Extension UI testing is complex/fragile; unit + integration + manual checklist covers adequately |
