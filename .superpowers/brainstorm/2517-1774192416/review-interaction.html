@@ -1,0 +1,76 @@
+<h2>Review Page — Interaction Design</h2>
+<p class="subtitle">How field definition works in the native document viewer</p>
+
+<div class="section">
+  <div class="label">State A — Document rendered, user selects text</div>
+  <div style="display:flex;gap:16px;align-items:flex-start;margin-top:12px">
+    <div class="mockup" style="flex:1;min-width:0">
+      <div class="mockup-header">📄 Sales Contract.docx &nbsp;·&nbsp; <span style="color:#6ee7b7;font-size:11px">2 fields defined</span></div>
+      <div class="mockup-body" style="font-size:12px;line-height:1.8;color:#d1d5db;font-family:Georgia,serif;padding:12px">
+        <p><strong style="color:#f9fafb">SERVICE AGREEMENT</strong></p>
+        <p>This Agreement is entered into as of <span style="background:#1d4ed8;color:#fff;border-radius:3px;padding:1px 5px;font-size:11px;font-family:monospace">{{EffectiveDate}}</span>, between</p>
+        <p><span style="background:#047857;color:#fff;border-radius:3px;padding:1px 5px;font-size:11px;font-family:monospace">{{ClientName}}</span> ("Client") and Acme Services LLC ("Provider").</p>
+        <p style="margin-top:8px">The total contract value shall be <span style="background:#fbbf24;color:#1a1a1a;border-radius:2px;padding:0 2px;font-size:11px">█ $75,000 █</span>, payable in monthly installments.</p>
+        <p style="color:#9ca3af;font-size:11px;margin-top:4px">← user has selected "$75,000"</p>
+      </div>
+    </div>
+    <div style="font-size:22px;color:#6b7280;align-self:center">→</div>
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px;min-width:200px;font-size:12px">
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">AI Suggestion</div>
+      <div style="color:#f1f5f9;font-size:13px;margin-bottom:4px">✨ Analyzing selection…</div>
+      <div style="color:#64748b;font-size:11px">"$75,000" in context of contract value</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <div class="mock-button" style="background:#1e40af;border:none;font-size:11px;padding:4px 10px;border-radius:4px;color:#bfdbfe">Dismiss</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">State B — AI returns suggestion (auto-suggest)</div>
+  <div style="display:flex;gap:16px;align-items:flex-start;margin-top:12px">
+    <div class="mockup" style="flex:1;min-width:0">
+      <div class="mockup-header">📄 Sales Contract.docx</div>
+      <div class="mockup-body" style="font-size:12px;line-height:1.8;color:#d1d5db;font-family:Georgia,serif;padding:12px">
+        <p>The total contract value shall be <span style="background:#f59e0b;color:#000;border-radius:2px;padding:0 4px">$75,000</span>, payable in monthly installments.</p>
+      </div>
+    </div>
+    <div style="font-size:22px;color:#6b7280;align-self:center">→</div>
+    <div style="background:#1e293b;border:1px solid #3b82f6;border-radius:8px;padding:14px;min-width:220px;font-size:12px;box-shadow:0 0 0 2px #1d4ed840">
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">AI Suggests</div>
+      <input value="ContractValue" style="width:100%;background:#0f172a;border:1px solid #3b82f6;border-radius:4px;padding:5px 8px;color:#f1f5f9;font-size:13px;margin-bottom:10px;box-sizing:border-box" readonly />
+      <div style="color:#64748b;font-size:11px;margin-bottom:12px">Edit the name or accept as-is</div>
+      <div style="display:flex;gap:6px">
+        <div class="mock-button" style="background:#2563eb;border:none;font-size:11px;padding:5px 12px;border-radius:4px;color:#fff;flex:1;text-align:center">✓ Accept</div>
+        <div class="mock-button" style="background:#374151;border:none;font-size:11px;padding:5px 10px;border-radius:4px;color:#9ca3af">✕</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">State C — Field accepted, chip inserted in document</div>
+  <div style="margin-top:12px">
+    <div class="mockup">
+      <div class="mockup-header">📄 Sales Contract.docx &nbsp;·&nbsp; <span style="color:#6ee7b7;font-size:11px">3 fields defined</span></div>
+      <div class="mockup-body" style="font-size:12px;line-height:1.8;color:#d1d5db;font-family:Georgia,serif;padding:12px">
+        <p><strong style="color:#f9fafb">SERVICE AGREEMENT</strong></p>
+        <p>This Agreement is entered into as of <span style="background:#1d4ed8;color:#fff;border-radius:3px;padding:1px 6px;font-size:11px;font-family:monospace">{{EffectiveDate}}</span>, between</p>
+        <p><span style="background:#047857;color:#fff;border-radius:3px;padding:1px 6px;font-size:11px;font-family:monospace">{{ClientName}}</span> ("Client") and Acme Services LLC ("Provider").</p>
+        <p>The total contract value shall be <span style="background:#b45309;color:#fff;border-radius:3px;padding:1px 6px;font-size:11px;font-family:monospace">{{ContractValue}}</span>, payable in monthly installments.</p>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:#6b7280">
+      Original text "$75,000" is replaced by <code style="background:#1e293b;padding:1px 4px;border-radius:3px;color:#93c5fd">{{ContractValue}}</code> in the DOCX binary immediately. The rendered view re-fetches from the updated binary.
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">Bottom bar — template naming + save</div>
+  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;display:flex;gap:8px;align-items:center;margin-top:10px">
+    <div style="color:#64748b;font-size:11px;white-space:nowrap">3 fields</div>
+    <input placeholder="Template name…" style="flex:1;background:#1e293b;border:1px solid #334155;border-radius:4px;padding:5px 8px;color:#f1f5f9;font-size:12px" readonly />
+    <div class="mock-button" style="background:#2563eb;border:none;font-size:11px;padding:5px 14px;border-radius:4px;color:#fff;white-space:nowrap">Save Template</div>
+  </div>
+</div>
