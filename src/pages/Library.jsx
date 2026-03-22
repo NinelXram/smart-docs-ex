@@ -13,10 +13,15 @@ export default function Library({ onSelect, onToast }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getTemplates().then(list => {
-      setTemplates(list)
-      setLoading(false)
-    })
+    getTemplates()
+      .then(list => {
+        setTemplates(list)
+        setLoading(false)
+      })
+      .catch(err => {
+        setLoading(false)
+        onToast({ message: `Failed to load templates: ${err.message}`, type: 'error' })
+      })
   }, [])
 
   const handleDelete = async (e, id) => {
@@ -52,13 +57,13 @@ export default function Library({ onSelect, onToast }) {
           <div className="flex-1 min-w-0">
             <div className="text-sm text-white font-medium truncate">{tpl.name}</div>
             <div className="text-xs text-gray-400 mt-0.5">
-              {tpl.variables.length} variable{tpl.variables.length !== 1 ? 's' : ''}
+              {(tpl.variables ?? []).length} variable{(tpl.variables ?? []).length !== 1 ? 's' : ''}
             </div>
           </div>
           <span
             className={`text-xs text-white px-1.5 py-0.5 rounded shrink-0 ${FORMAT_BADGE[tpl.sourceFormat] ?? 'bg-gray-600'}`}
           >
-            {tpl.sourceFormat.toUpperCase()}
+            {(tpl.sourceFormat ?? '').toUpperCase()}
           </span>
           <button
             onClick={e => handleDelete(e, tpl.id)}

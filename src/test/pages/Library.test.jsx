@@ -75,4 +75,25 @@ describe('Library', () => {
     )
     expect(storage.deleteTemplate).toHaveBeenCalledWith('id-1')
   })
+
+  it('shows error toast when getTemplates fails', async () => {
+    storage.getTemplates.mockRejectedValue(new Error('Storage error'))
+    const onToast = vi.fn()
+    render(<Library onSelect={vi.fn()} onToast={onToast} />)
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
+    )
+  })
+
+  it('shows error toast when delete fails', async () => {
+    storage.getTemplates.mockResolvedValue(TEMPLATES)
+    storage.deleteTemplate.mockRejectedValue(new Error('Delete failed'))
+    const onToast = vi.fn()
+    render(<Library onSelect={vi.fn()} onToast={onToast} />)
+    await waitFor(() => screen.getByText('Sales Contract'))
+    fireEvent.click(screen.getAllByRole('button', { name: /delete/i })[0])
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
+    )
+  })
 })
