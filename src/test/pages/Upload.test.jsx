@@ -65,4 +65,19 @@ describe('Upload', () => {
       expect(screen.getByText(/document too large/i)).toBeInTheDocument()
     )
   })
+
+  it('clears error when a new file is selected after a previous failure', async () => {
+    parsers.parseFile.mockRejectedValueOnce(new Error('First file failed'))
+    parsers.parseFile.mockResolvedValueOnce({ text: 'doc text', format: 'pdf' })
+    gemini.extractVariables.mockResolvedValue([])
+    const onScan = vi.fn()
+    render(<Upload apiKey="key" onScan={onScan} onToast={vi.fn()} />)
+    // First file: error
+    fireEvent.click(screen.getByRole('button', { name: 'select file' }))
+    await waitFor(() => expect(screen.getByText(/first file failed/i)).toBeInTheDocument())
+    // Second file: success, error should clear
+    fireEvent.click(screen.getByRole('button', { name: 'select file' }))
+    await waitFor(() => expect(onScan).toHaveBeenCalled())
+    expect(screen.queryByText(/first file failed/i)).not.toBeInTheDocument()
+  })
 })

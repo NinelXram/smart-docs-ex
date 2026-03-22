@@ -13,7 +13,7 @@ export default function Upload({ apiKey, onScan, onToast }) {
     try {
       const { text, format } = await parseFile(file)
       const variables = await extractVariables(apiKey, text)
-      onScan({ text, format, variables, fileName: file.name })
+      onScan?.({ text, format, variables, fileName: file.name })
     } catch (err) {
       setError(err.message)
     } finally {
