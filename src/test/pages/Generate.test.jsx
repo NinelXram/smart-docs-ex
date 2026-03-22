@@ -84,4 +84,15 @@ describe('Generate', () => {
     fireEvent.click(screen.getByRole('button', { name: /back/i }))
     expect(onBack).toHaveBeenCalled()
   })
+
+  it('calls onToast with error when generation fails', async () => {
+    engine.injectVariables.mockReturnValue({ content: 'filled', warnings: [] })
+    engine.generateDocx.mockRejectedValue(new Error('Output generation failed'))
+    const onToast = vi.fn()
+    render(<Generate template={TEMPLATE} onBack={vi.fn()} onToast={onToast} />)
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
+    )
+  })
 })
