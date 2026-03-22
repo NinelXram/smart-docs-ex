@@ -90,4 +90,22 @@ describe('renderXlsx', () => {
     expect(result.html).toContain('data-cell-address="Sheet1!A1"')
     expect(result.html).toContain('></td>')
   })
+
+  it('escapes HTML in cell values and sheet names', () => {
+    XLSX.read.mockReturnValue({
+      SheetNames: ['<Sheet>'],
+      Sheets: {
+        '<Sheet>': {
+          '!ref': 'A1:A1',
+          A1: { v: '<b>bold</b>', t: 's' },
+        },
+      },
+    })
+    XLSX.utils.decode_range.mockReturnValue({ s: { r: 0, c: 0 }, e: { r: 0, c: 0 } })
+    XLSX.utils.encode_cell.mockReturnValue('A1')
+    const result = renderXlsx(new ArrayBuffer(8))
+    expect(result.html).not.toContain('<b>')
+    expect(result.html).toContain('&lt;b&gt;')
+    expect(result.html).toContain('&lt;Sheet&gt;')
+  })
 })
