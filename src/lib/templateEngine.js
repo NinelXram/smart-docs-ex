@@ -1,12 +1,8 @@
 import PizZip from 'pizzip'
 import Docxtemplater from 'docxtemplater'
-import * as XLSX from 'xlsx'
 
 /**
  * Generate a filled DOCX from a binary template with {{tokens}}.
- * @param {ArrayBuffer} binary — DOCX with {{FieldName}} tokens
- * @param {Record<string, string>} values — field values keyed by name
- * @returns {Promise<Blob>}
  */
 export async function generateDocx(binary, values) {
   const zip = new PizZip(binary)
@@ -17,39 +13,129 @@ export async function generateDocx(binary, values) {
 
 /**
  * Generate a filled XLSX from a binary template with {{tokens}} in cells.
- * @param {ArrayBuffer} binary — XLSX with {{FieldName}} token cells
- * @param {Record<string, string>} values — field values keyed by name
- * @returns {Promise<Blob>}
+ * Uses PizZip surgery — preserves all non-text entries (drawings, media, theme).
  */
 export async function generateXlsx(binary, values) {
-  const wb = XLSX.read(binary, { type: 'array' })
+  const zip = new PizZip(binary)
+  const parser = new DOMParser()
+  const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 
-  for (const sheetName of wb.SheetNames) {
-    const ws = wb.Sheets[sheetName]
-    for (const cellRef in ws) {
-      if (cellRef.startsWith('!')) continue
-      const cell = ws[cellRef]
-      if (cell && cell.t === 's' && typeof cell.v === 'string') {
-        const match = cell.v.match(/^\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}$/)
-        if (match && match[1] in values) {
-          cell.v = values[match[1]]
-        }
+  // Enumerate sheet paths via xl/_rels/workbook.xml.rels (same approach as insertXlsx)
+  const sheetPaths = []
+  const wbRelsXml = zip.files['xl/_rels/workbook.xml.rels']?.asText()
+  if (wbRelsXml) {
+    const relsDoc = parser.parseFromString(wbRelsXml, 'application/xml')
+    for (const rel of Array.from(relsDoc.getElementsByTagName('Relationship'))) {
+      const type = rel.getAttribute('Type') ?? ''
+      if (type.endsWith('/worksheet')) {
+        const target = rel.getAttribute('Target')
+        if (target) sheetPaths.push(`xl/${target}`)
       }
     }
   }
 
-  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-  return new Blob([buf], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // Load shared strings
+  const ssPath = 'xl/sharedStrings.xml'
+  const ssXml = zip.files[ssPath]?.asText()
+  let ssDoc = null
+  let siEls = []
+  if (ssXml) {
+    ssDoc = parser.parseFromString(ssXml, 'application/xml')
+    siEls = Array.from(ssDoc.getElementsByTagNameNS(ns, 'si'))
+  }
+
+  // Map: shared string index → replacement value
+  const ssUpdates = new Map()
+
+  // Process each sheet
+  for (const sheetPath of sheetPaths) {
+    const sheetXml = zip.files[sheetPath]?.asText()
+    if (!sheetXml) continue
+    const sheetDoc = parser.parseFromString(sheetXml, 'application/xml')
+    let sheetModified = false
+
+    for (const cell of Array.from(sheetDoc.getElementsByTagNameNS(ns, 'c'))) {
+      const t = cell.getAttribute('t')
+
+      if (t === 's' && siEls.length > 0) {
+        const vEl = cell.getElementsByTagNameNS(ns, 'v')[0]
+        if (!vEl) continue
+        const idx = parseInt(vEl.textContent, 10)
+        if (isNaN(idx) || idx < 0 || idx >= siEls.length) continue
+        const tEls = siEls[idx].getElementsByTagNameNS(ns, 't')
+        if (!tEls.length) continue
+        const text = tEls[0].textContent
+        const match = text.match(/^\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}$/)
+        if (match && match[1] in values) {
+          ssUpdates.set(idx, values[match[1]])
+        }
+      } else if (t === 'inlineStr') {
+        const isEl = cell.getElementsByTagNameNS(ns, 'is')[0]
+        if (!isEl) continue
+        const tEl = isEl.getElementsByTagNameNS(ns, 't')[0]
+        if (!tEl) continue
+        const match = tEl.textContent.match(/^\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}$/)
+        if (match && match[1] in values) {
+          tEl.textContent = values[match[1]]
+          sheetModified = true
+        }
+      }
+    }
+
+    if (sheetModified) {
+      zip.file(sheetPath, new XMLSerializer().serializeToString(sheetDoc))
+    }
+  }
+
+  // Apply shared string updates
+  if (ssDoc && ssUpdates.size > 0) {
+    for (const [idx, value] of ssUpdates) {
+      const tEls = siEls[idx].getElementsByTagNameNS(ns, 't')
+      if (tEls.length) tEls[0].textContent = value
+    }
+    zip.file(ssPath, new XMLSerializer().serializeToString(ssDoc))
+  }
+
+  return zip.generate({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
 }
 
 /**
- * Triggers a browser download of a Blob.
- * @param {Blob} blob
- * @param {string} filename
+ * Save a Blob to disk.
+ * Uses showSaveFilePicker when available; falls back to anchor-click download.
+ * AbortError (user cancel) is silently swallowed.
  */
-export function downloadBlob(blob, filename) {
+export async function saveFile(blob, suggestedName, format) {
+  const mimeMap = {
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  }
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{
+          description: format.toUpperCase() + ' Document',
+          accept: { [mimeMap[format]]: ['.' + format] },
+        }],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      throw err
+    }
+  } else {
+    downloadBlob(blob, suggestedName)
+  }
+}
+
+// Private fallback — not exported
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
