@@ -1,5 +1,4 @@
 import PizZip from 'pizzip'
-import * as _XLSX from 'xlsx'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const XML_NS = 'http://www.w3.org/XML/1998/namespace'
@@ -143,24 +142,119 @@ export function insertDocx(binary, selectedText, paragraphIndex, fieldName) {
 
 /**
  * Insert {{fieldName}} into an XLSX binary at the specified cell.
+ * Uses PizZip surgery to preserve all zip entries (drawings, media, etc.).
  * @param {ArrayBuffer} binary
  * @param {string} cellAddress — format "SheetName!ColRow" e.g. "Sheet1!B3"
  * @param {string} fieldName
  * @returns {{ binary: ArrayBuffer } | { error: string }}
  */
 export function insertXlsx(binary, cellAddress, fieldName) {
+  // cellAddress format: "Sheet1!B3" or "Sheet1!A1"
   const bangIdx = cellAddress.indexOf('!')
   if (bangIdx === -1) return { error: 'invalid_cell_address' }
-
   const sheetName = cellAddress.slice(0, bangIdx)
-  const cellRef = cellAddress.slice(bangIdx + 1)
+  const cellRef = cellAddress.slice(bangIdx + 1)  // e.g. "B3"
 
-  const wb = _XLSX.read(binary, { type: 'array' })
-  const ws = wb.Sheets[sheetName]
-  if (!ws) return { error: 'sheet_not_found' }
+  let zip
+  try {
+    zip = new PizZip(binary)
+  } catch {
+    return { error: 'invalid_binary' }
+  }
 
-  ws[cellRef] = { t: 's', v: `{{${fieldName}}}` }
+  const parser = new DOMParser()
 
-  const buf = _XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-  return { binary: buf.buffer ?? buf }
+  // Step 1: Find sheet in workbook.xml
+  const wbXml = zip.files['xl/workbook.xml']?.asText()
+  if (!wbXml) return { error: 'sheet_not_found' }
+  const wbDoc = parser.parseFromString(wbXml, 'application/xml')
+  const sheetEls = Array.from(wbDoc.getElementsByTagName('sheet'))
+  const sheetEl = sheetEls.find(el => el.getAttribute('name') === sheetName)
+  if (!sheetEl) return { error: 'sheet_not_found' }
+  const rId = sheetEl.getAttribute('r:id')
+
+  // Step 2: Resolve sheet file path via rels
+  let sheetPath = null
+  const wbRelsXml = zip.files['xl/_rels/workbook.xml.rels']?.asText()
+  if (wbRelsXml) {
+    const wbRelsDoc = parser.parseFromString(wbRelsXml, 'application/xml')
+    const rels = Array.from(wbRelsDoc.getElementsByTagName('Relationship'))
+    const rel = rels.find(r => r.getAttribute('Id') === rId)
+    if (rel) {
+      const target = rel.getAttribute('Target') // e.g. "worksheets/sheet1.xml"
+      sheetPath = `xl/${target}`
+    }
+  }
+  // Fallback: iterate zip files for xl/worksheets/sheet*.xml
+  if (!sheetPath) {
+    const sheetFiles = Object.keys(zip.files)
+      .filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f))
+      .sort()
+    if (sheetFiles.length === 0) return { error: 'sheet_not_found' }
+    sheetPath = sheetFiles[0]
+  }
+
+  // Step 3: Read and modify the sheet XML
+  const sheetXml = zip.files[sheetPath]?.asText()
+  if (!sheetXml) return { error: 'sheet_not_found' }
+  const sheetDoc = parser.parseFromString(sheetXml, 'application/xml')
+
+  // Find the target cell element
+  const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+  const cells = Array.from(sheetDoc.getElementsByTagNameNS(ns, 'c'))
+  const targetCell = cells.find(c => c.getAttribute('r') === cellRef)
+  if (!targetCell) return { error: 'cell_not_found' }
+
+  // Step 4: Insert the field token
+  const ssPath = 'xl/sharedStrings.xml'
+  const ssXml = zip.files[ssPath]?.asText()
+
+  if (ssXml) {
+    // Use shared strings: append new entry
+    const ssDoc = parser.parseFromString(ssXml, 'application/xml')
+    const sstEl = ssDoc.documentElement
+
+    // Count current entries to get new index
+    const siEls = Array.from(ssDoc.getElementsByTagNameNS(ns, 'si'))
+    const newIndex = siEls.length
+
+    // Append new <si><t>{{fieldName}}</t></si>
+    const newSi = ssDoc.createElementNS(ns, 'si')
+    const newT = ssDoc.createElementNS(ns, 't')
+    newT.textContent = `{{${fieldName}}}`
+    newSi.appendChild(newT)
+    sstEl.appendChild(newSi)
+
+    // Update count and uniqueCount attributes
+    const count = parseInt(sstEl.getAttribute('count') ?? '0', 10)
+    const uniqueCount = parseInt(sstEl.getAttribute('uniqueCount') ?? '0', 10)
+    sstEl.setAttribute('count', String(count + 1))
+    sstEl.setAttribute('uniqueCount', String(uniqueCount + 1))
+
+    // Update the cell to reference the new shared string
+    // Remove all child elements from the cell
+    while (targetCell.firstChild) targetCell.removeChild(targetCell.firstChild)
+    targetCell.setAttribute('t', 's')
+    const vEl = sheetDoc.createElementNS(ns, 'v')
+    vEl.textContent = String(newIndex)
+    targetCell.appendChild(vEl)
+
+    const serializer = new XMLSerializer()
+    zip.file(sheetPath, serializer.serializeToString(sheetDoc))
+    zip.file(ssPath, serializer.serializeToString(ssDoc))
+  } else {
+    // No shared strings — use inline string
+    while (targetCell.firstChild) targetCell.removeChild(targetCell.firstChild)
+    targetCell.setAttribute('t', 'inlineStr')
+    const isEl = sheetDoc.createElementNS(ns, 'is')
+    const tEl = sheetDoc.createElementNS(ns, 't')
+    tEl.textContent = `{{${fieldName}}}`
+    isEl.appendChild(tEl)
+    targetCell.appendChild(isEl)
+
+    const serializer = new XMLSerializer()
+    zip.file(sheetPath, serializer.serializeToString(sheetDoc))
+  }
+
+  return { binary: zip.generate({ type: 'arraybuffer' }) }
 }

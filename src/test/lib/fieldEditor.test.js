@@ -172,3 +172,43 @@ describe('insertXlsx', () => {
     expect(result.error).toBe('sheet_not_found')
   })
 })
+
+describe('insertXlsx — drawing preservation', () => {
+  it('preserves drawing entry in the output zip', () => {
+    // Build a hand-crafted PizZip fixture
+    const zip = new PizZip()
+    zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`)
+    zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`)
+    zip.file('xl/worksheets/sheet1.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+    </row>
+  </sheetData>
+</worksheet>`)
+    zip.file('xl/sharedStrings.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1">
+  <si><t>Hello</t></si>
+</sst>`)
+    zip.file('xl/drawings/drawing1.xml', `<?xml version="1.0" encoding="UTF-8"?><root/>`)
+
+    const buffer = zip.generate({ type: 'arraybuffer' })
+    const result = insertXlsx(buffer, 'Sheet1!A1', 'ClientName')
+    expect(result.error).toBeUndefined()
+
+    const outZip = new PizZip(result.binary)
+    expect(Object.keys(outZip.files)).toEqual(
+      expect.arrayContaining(['xl/drawings/drawing1.xml'])
+    )
+  })
+})
