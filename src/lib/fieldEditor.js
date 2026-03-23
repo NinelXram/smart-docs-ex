@@ -127,16 +127,31 @@ export function insertDocx(binary, selectedText, paragraphIndex, fieldName) {
 
   const paras = collectBodyParagraphs(bodies[0])
 
-  if (paragraphIndex < 0 || paragraphIndex >= paras.length) return { error: 'paragraph_index_out_of_range' }
+  // Try the hinted index first; fall back to a full scan if text not found there.
+  // (HTML paragraph count from mammoth may differ from raw <w:p> count in XML.)
+  let targetPara = null
+  if (paragraphIndex >= 0 && paragraphIndex < paras.length) {
+    const runs = Array.from(paras[paragraphIndex].getElementsByTagNameNS(W_NS, 'r'))
+    const text = runs.map(r => Array.from(r.getElementsByTagNameNS(W_NS, 't')).map(t => t.textContent).join('')).join('')
+    if (text.includes(selectedText)) targetPara = paras[paragraphIndex]
+  }
+  if (!targetPara) {
+    targetPara = paras.find(p => {
+      const runs = Array.from(p.getElementsByTagNameNS(W_NS, 'r'))
+      const text = runs.map(r => Array.from(r.getElementsByTagNameNS(W_NS, 't')).map(t => t.textContent).join('')).join('')
+      return text.includes(selectedText)
+    }) ?? null
+  }
+  if (!targetPara) return { error: 'text_not_found' }
 
-  const err = insertInParagraph(paras[paragraphIndex], selectedText, fieldName)
+  const err = insertInParagraph(targetPara, selectedText, fieldName)
   if (err) return { error: err }
 
   const serializer = new XMLSerializer()
   const newXml = serializer.serializeToString(xmlDoc)
-  zip.file('word/document.xml', newXml)
+  zip.file('word/document.xml', newXml, { compression: 'DEFLATE' })
 
-  const newBinary = zip.generate({ type: 'arraybuffer' })
+  const newBinary = zip.generate({ type: 'arraybuffer', compression: 'DEFLATE' })
   return { binary: newBinary }
 }
 
@@ -224,7 +239,7 @@ export function insertXlsx(binary, cellAddress, fieldName) {
     updatedSsXml = updatedSsXml
       .replace(/\bcount="(\d+)"/, (_, n) => `count="${parseInt(n, 10) + 1}"`)
       .replace(/\buniqueCount="(\d+)"/, (_, n) => `uniqueCount="${parseInt(n, 10) + 1}"`)
-    zip.file(ssPath, updatedSsXml)
+    zip.file(ssPath, updatedSsXml, { compression: 'DEFLATE' })
 
     // Update the cell in the sheet XML
     while (targetCell.firstChild) targetCell.removeChild(targetCell.firstChild)
@@ -234,7 +249,7 @@ export function insertXlsx(binary, cellAddress, fieldName) {
     targetCell.appendChild(vEl)
 
     const serializer = new XMLSerializer()
-    zip.file(sheetPath, serializer.serializeToString(sheetDoc))
+    zip.file(sheetPath, serializer.serializeToString(sheetDoc), { compression: 'DEFLATE' })
   } else {
     // No shared strings — use inline string
     while (targetCell.firstChild) targetCell.removeChild(targetCell.firstChild)
@@ -246,8 +261,8 @@ export function insertXlsx(binary, cellAddress, fieldName) {
     targetCell.appendChild(isEl)
 
     const serializer = new XMLSerializer()
-    zip.file(sheetPath, serializer.serializeToString(sheetDoc))
+    zip.file(sheetPath, serializer.serializeToString(sheetDoc), { compression: 'DEFLATE' })
   }
 
-  return { binary: zip.generate({ type: 'arraybuffer' }) }
+  return { binary: zip.generate({ type: 'arraybuffer', compression: 'DEFLATE' }) }
 }

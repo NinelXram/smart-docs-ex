@@ -1,14 +1,36 @@
 import PizZip from 'pizzip'
-import Docxtemplater from 'docxtemplater'
 
 /**
  * Generate a filled DOCX from a binary template with {{tokens}}.
+ * Uses direct regex replacement in word/document.xml — avoids docxtemplater
+ * split-tag issues caused by XMLSerializer namespace re-declarations.
  */
 export async function generateDocx(binary, values) {
   const zip = new PizZip(binary)
-  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true })
-  doc.render(values)
-  return await doc.getZip().generate({ type: 'blob' })
+
+  const xmlFiles = ['word/document.xml', 'word/header1.xml', 'word/footer1.xml',
+    'word/header2.xml', 'word/footer2.xml', 'word/header3.xml', 'word/footer3.xml']
+
+  for (const path of xmlFiles) {
+    if (!zip.files[path]) continue
+    let xml = zip.files[path].asText()
+    for (const [field, value] of Object.entries(values)) {
+      // Escape the value for XML: &, <, >, ", '
+      const escaped = String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
+      // Replace all occurrences of {{field}} regardless of XML entity encoding of braces
+      const pattern = new RegExp(`\\{\\{${field}\\}\\}`, 'g')
+      xml = xml.replace(pattern, escaped)
+    }
+    zip.file(path, xml, { compression: 'DEFLATE' })
+  }
+
+  return zip.generate({ type: 'blob', compression: 'DEFLATE',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
 }
 
 /**
@@ -83,7 +105,7 @@ export async function generateXlsx(binary, values) {
     }
 
     if (sheetModified) {
-      zip.file(sheetPath, new XMLSerializer().serializeToString(sheetDoc))
+      zip.file(sheetPath, new XMLSerializer().serializeToString(sheetDoc), { compression: 'DEFLATE' })
     }
   }
 
@@ -93,12 +115,13 @@ export async function generateXlsx(binary, values) {
       const tEls = siEls[idx].getElementsByTagNameNS(ns, 't')
       if (tEls.length) tEls[0].textContent = value
     }
-    zip.file(ssPath, new XMLSerializer().serializeToString(ssDoc))
+    zip.file(ssPath, new XMLSerializer().serializeToString(ssDoc), { compression: 'DEFLATE' })
   }
 
   return zip.generate({
     type: 'blob',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    compression: 'DEFLATE',
   })
 }
 
