@@ -12,7 +12,7 @@ vi.mock('../../lib/fieldEditor.js', () => ({
   insertXlsx: vi.fn(),
 }))
 vi.mock('../../lib/gemini.js', () => ({
-  suggestFieldName: vi.fn().mockResolvedValue('ClientName'),
+  suggestFieldName: vi.fn().mockResolvedValue({ fieldName: 'ClientName', description: 'client name' }),
   suggestFieldPattern: vi.fn().mockResolvedValue({ label: 'Amount: ', value: '$75,000', fieldName: 'amount' }),
 }))
 vi.mock('../../lib/storage.js', () => ({

@@ -1,7 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
-vi.mock('../lib/storage.js', () => ({ getApiKey: vi.fn(), checkOpfsAvailable: vi.fn() }))
+vi.mock('../lib/storage.js', () => ({
+  getApiKey: vi.fn(),
+  checkOpfsAvailable: vi.fn(),
+  getLang: vi.fn().mockResolvedValue('vi'),
+  saveLang: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../pages/Onboarding.jsx', () => ({
   default: ({ onSuccess }) => (
     <div data-testid="onboarding">
@@ -63,7 +68,9 @@ describe('App', () => {
     storage.getApiKey.mockResolvedValue('my-key')
     render(<App />)
     await waitFor(() => screen.getByTestId('upload'))
-    fireEvent.click(screen.getByRole('button', { name: /library/i }))
+    const buttons = screen.getAllByRole('button')
+    const libraryBtn = buttons.find(b => /library|thư viện/i.test(b.textContent))
+    fireEvent.click(libraryBtn)
     expect(screen.getByTestId('library')).toBeInTheDocument()
   })
 
@@ -80,5 +87,21 @@ describe('App', () => {
     storage.checkOpfsAvailable.mockRejectedValue(new Error('OPFS not supported'))
     render(<App />)
     await waitFor(() => expect(screen.getByTestId('opfs-error')).toBeInTheDocument())
+  })
+})
+
+describe('language', () => {
+  it('loads saved language from storage on mount', async () => {
+    storage.getLang.mockResolvedValue('en')
+    storage.getApiKey.mockResolvedValue('my-key')
+    render(<App />)
+    await waitFor(() => expect(storage.getLang).toHaveBeenCalled())
+  })
+
+  it('renders EN toggle button when lang is vi and step > 0', async () => {
+    storage.getLang.mockResolvedValue('vi')
+    storage.getApiKey.mockResolvedValue('my-key')
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'EN' })).toBeInTheDocument())
   })
 })
