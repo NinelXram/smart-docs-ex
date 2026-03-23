@@ -9,11 +9,17 @@ vi.mock('../../lib/templateEngine.js', () => ({
 
 vi.mock('../../lib/storage.js', () => ({
   getTemplateBinary: vi.fn(),
+  getApiKey: vi.fn(),
+}))
+
+vi.mock('../../lib/gemini.js', () => ({
+  analyzeSource: vi.fn(),
 }))
 
 import Generate from '../../pages/Generate.jsx'
 import * as engine from '../../lib/templateEngine.js'
 import * as storage from '../../lib/storage.js'
+import * as gemini from '../../lib/gemini.js'
 
 const FAKE_BUFFER = new ArrayBuffer(4)
 
@@ -36,6 +42,7 @@ const TEMPLATE_XLSX = {
 beforeEach(() => {
   vi.clearAllMocks()
   storage.getTemplateBinary.mockResolvedValue(FAKE_BUFFER)
+  storage.getApiKey.mockResolvedValue('fake-api-key')
 })
 
 describe('Generate', () => {
@@ -136,5 +143,87 @@ describe('Generate', () => {
     await waitFor(() =>
       expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
     )
+  })
+
+  describe('Analyze button', () => {
+    it('fills matched fields when analyzeSource resolves', async () => {
+      gemini.analyzeSource.mockResolvedValue({ ClientName: 'Jane' })
+      render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={vi.fn()} />)
+      await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+      const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+      const analyzeInput = screen.getByTestId('analyze-file-input')
+      fireEvent.change(analyzeInput, { target: { files: [file] } })
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('ClientName')).toHaveValue('Jane')
+      })
+    })
+
+    it('shows analyzeError toast when analyzeSource throws', async () => {
+      gemini.analyzeSource.mockRejectedValue(new Error('API down'))
+      const onToast = vi.fn()
+      render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={onToast} />)
+      await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+      const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+      const analyzeInput = screen.getByTestId('analyze-file-input')
+      fireEvent.change(analyzeInput, { target: { files: [file] } })
+
+      await waitFor(() =>
+        expect(onToast).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'error', message: expect.stringContaining('API down') })
+        )
+      )
+    })
+
+    it('shows analyzeError toast and does not call analyzeSource when API key is null', async () => {
+      storage.getApiKey.mockResolvedValue(null)
+      const onToast = vi.fn()
+      render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={onToast} />)
+      await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+      const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+      const analyzeInput = screen.getByTestId('analyze-file-input')
+      fireEvent.change(analyzeInput, { target: { files: [file] } })
+
+      await waitFor(() =>
+        expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
+      )
+      expect(gemini.analyzeSource).not.toHaveBeenCalled()
+    })
+
+    it('shows analyzeError toast when analyzeSource throws for oversized file', async () => {
+      gemini.analyzeSource.mockRejectedValue(new Error('File too large (max 4 MB)'))
+      const onToast = vi.fn()
+      render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={onToast} />)
+      await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+      const file = new File(['content'], 'big.png', { type: 'image/png' })
+      const analyzeInput = screen.getByTestId('analyze-file-input')
+      fireEvent.change(analyzeInput, { target: { files: [file] } })
+
+      await waitFor(() =>
+        expect(onToast).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'error', message: expect.stringContaining('File too large') })
+        )
+      )
+    })
+
+    it('fills fields when file is dropped onto the Analyze button', async () => {
+      gemini.analyzeSource.mockResolvedValue({ ClientName: 'Dropped' })
+      render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={vi.fn()} />)
+      await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+      const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+      const analyzeBtn = screen.getByRole('button', { name: /analyze/i })
+      fireEvent.drop(analyzeBtn, {
+        dataTransfer: { files: [file] },
+      })
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('ClientName')).toHaveValue('Dropped')
+      })
+    })
   })
 })
