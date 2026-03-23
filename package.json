@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "docx-preview": "^0.3.7",
     "docxtemplater": "^3.68.3",
     "mammoth": "^1.8.0",
     "pizzip": "^3.2.0",
