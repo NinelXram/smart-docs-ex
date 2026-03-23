@@ -1,6 +1,14 @@
-const STEPS = ['Upload', 'Review', 'Library', 'Generate']
+import { useLanguage } from '../lib/i18n.jsx'
 
 export default function ProgressBar({ step }) {
+  const { t } = useLanguage()
+  const STEPS = [
+    t('progressBar.upload'),
+    t('progressBar.review'),
+    t('progressBar.library'),
+    t('progressBar.generate'),
+  ]
+
   return (
     <div className="flex border-b border-gray-700 shrink-0">
       {STEPS.map((label, i) => {
