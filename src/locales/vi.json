@@ -1,0 +1,84 @@
+{
+  "app": {
+    "title": "Trợ lý Mẫu Tài liệu",
+    "changeApiKey": "Đổi API Key",
+    "library": "Thư viện",
+    "loading": "Đang tải…",
+    "opfsError": "Extension này yêu cầu trình duyệt hỗ trợ hệ thống tệp. Vui lòng cập nhật Chrome.",
+    "langSaveError": "Không thể lưu cài đặt ngôn ngữ"
+  },
+  "onboarding": {
+    "title": "Trợ lý Mẫu Tài liệu",
+    "subtitle": "Nhập Gemini API key của bạn để bắt đầu",
+    "placeholder": "Gemini API key",
+    "submit": "Kiểm tra kết nối",
+    "submitting": "Đang kiểm tra…",
+    "getKey": "Lấy key miễn phí tại"
+  },
+  "upload": {
+    "title": "Tải lên tài liệu",
+    "rendering": "Đang xử lý tài liệu…",
+    "dropzoneLabel": "Kéo thả tệp hoặc nhấp để duyệt",
+    "dropzoneAccepted": "Chấp nhận: PDF, DOCX, XLSX",
+    "unsupported": "Định dạng tệp không được hỗ trợ"
+  },
+  "review": {
+    "back": "← Quay lại",
+    "fields": "trường",
+    "fields_plural": "trường",
+    "templatePlaceholder": "Tên mẫu…",
+    "save": "Lưu mẫu",
+    "saving": "Đang lưu…",
+    "xlsxHint": "Nhấp vào ô — AI sẽ xác định nhãn và giá trị. Chọn văn bản để chỉ ra phần nào là giá trị.",
+    "labelPreserved": "Nhãn (giữ nguyên)",
+    "fieldName": "Tên trường",
+    "description": "Mô tả",
+    "descriptionHint": "(tối đa 10 từ)",
+    "descriptionPlaceholder": "Trường này đại diện cho điều gì?",
+    "accept": "Xác nhận",
+    "dismiss": "Bỏ qua",
+    "analyzing": "Đang phân tích…",
+    "errorSingleParagraph": "Chọn văn bản trong cùng một đoạn",
+    "errorAlreadyField": "Ô này đã là một trường",
+    "errorFieldRequired": "Tên trường là bắt buộc",
+    "errorFieldFormat": "Tên trường phải bắt đầu bằng chữ cái và chỉ chứa chữ cái, số và dấu gạch dưới",
+    "errorFieldDuplicate": "Tên trường đã được sử dụng — vui lòng chọn tên khác",
+    "errorInsertFailed": "Không thể xác định vị trí trong tài liệu — thử chọn lại",
+    "errorAiFailed": "Gợi ý AI thất bại — vui lòng nhập thủ công",
+    "errorNoFields": "Hãy xác định ít nhất một trường trước khi lưu",
+    "errorNoName": "Vui lòng nhập tên mẫu",
+    "errorSaveFailed": "Lưu thất bại:",
+    "ariaPopover": "Gợi ý tên trường",
+    "ariaTablist": "Tab bảng tính"
+  },
+  "library": {
+    "loading": "Đang tải…",
+    "empty": "Chưa có mẫu nào được lưu.",
+    "new": "+ Mẫu mới",
+    "variable": "biến",
+    "variables": "biến",
+    "errorLoad": "Tải mẫu thất bại:",
+    "errorDelete": "Xóa thất bại:",
+    "ariaDelete": "xóa mẫu"
+  },
+  "generate": {
+    "back": "← Quay lại",
+    "download": "⬇ Tải xuống",
+    "generating": "Đang tạo…",
+    "fieldPlaceholder": "Nhập",
+    "errorNotFound": "Không tìm thấy tệp mẫu — vui lòng tải lên lại",
+    "errorFailed": "Tạo tệp thất bại:"
+  },
+  "progressBar": {
+    "upload": "Tải lên",
+    "review": "Xem xét",
+    "library": "Thư viện",
+    "generate": "Tạo tệp"
+  },
+  "variableChip": {
+    "ariaRemove": "xóa biến"
+  },
+  "toast": {
+    "ariaDismiss": "đóng thông báo"
+  }
+}

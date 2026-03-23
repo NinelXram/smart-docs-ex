@@ -1,0 +1,84 @@
+{
+  "app": {
+    "title": "Doc Template Agent",
+    "changeApiKey": "Change API Key",
+    "library": "Library",
+    "loading": "Loading…",
+    "opfsError": "This extension requires a browser with file system support. Please update Chrome.",
+    "langSaveError": "Failed to save language preference"
+  },
+  "onboarding": {
+    "title": "Doc Template Agent",
+    "subtitle": "Enter your Gemini API key to get started",
+    "placeholder": "Gemini API key",
+    "submit": "Test Connection",
+    "submitting": "Testing…",
+    "getKey": "Get a free key at"
+  },
+  "upload": {
+    "title": "Upload Document",
+    "rendering": "Rendering document…",
+    "dropzoneLabel": "Drop a file or click to browse",
+    "dropzoneAccepted": "Accepted: PDF, DOCX, XLSX",
+    "unsupported": "Unsupported file type"
+  },
+  "review": {
+    "back": "← Back",
+    "fields": "field",
+    "fields_plural": "fields",
+    "templatePlaceholder": "Template name…",
+    "save": "Save Template",
+    "saving": "Saving…",
+    "xlsxHint": "Click a cell — AI will identify the label and value. Select text to hint which part is the value.",
+    "labelPreserved": "Label (preserved)",
+    "fieldName": "Field name",
+    "description": "Description",
+    "descriptionHint": "(max 10 words)",
+    "descriptionPlaceholder": "What does this field represent?",
+    "accept": "Accept",
+    "dismiss": "Dismiss",
+    "analyzing": "Analyzing…",
+    "errorSingleParagraph": "Select text within a single paragraph",
+    "errorAlreadyField": "This cell is already a field",
+    "errorFieldRequired": "Field name is required",
+    "errorFieldFormat": "Field name must start with a letter and contain only letters, digits, and underscores",
+    "errorFieldDuplicate": "Field name already used — choose another",
+    "errorInsertFailed": "Could not locate selection in document — try selecting again",
+    "errorAiFailed": "AI suggestion failed — enter values manually",
+    "errorNoFields": "Define at least one field before saving",
+    "errorNoName": "Enter a template name",
+    "errorSaveFailed": "Save failed:",
+    "ariaPopover": "Field name suggestion",
+    "ariaTablist": "Worksheet tabs"
+  },
+  "library": {
+    "loading": "Loading…",
+    "empty": "No templates saved yet.",
+    "new": "+ New Template",
+    "variable": "variable",
+    "variables": "variables",
+    "errorLoad": "Failed to load templates:",
+    "errorDelete": "Delete failed:",
+    "ariaDelete": "delete template"
+  },
+  "generate": {
+    "back": "← Back",
+    "download": "⬇ Download",
+    "generating": "Generating…",
+    "fieldPlaceholder": "Enter",
+    "errorNotFound": "Template file not found — please re-upload",
+    "errorFailed": "Generation failed:"
+  },
+  "progressBar": {
+    "upload": "Upload",
+    "review": "Review",
+    "library": "Library",
+    "generate": "Generate"
+  },
+  "variableChip": {
+    "ariaRemove": "remove variable"
+  },
+  "toast": {
+    "ariaDismiss": "dismiss toast"
+  }
+}
