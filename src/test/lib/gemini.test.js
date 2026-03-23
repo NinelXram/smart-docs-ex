@@ -9,7 +9,7 @@ vi.mock('@google/generative-ai', () => ({
   })),
 }))
 
-import { testConnection, extractVariables, MAX_CHARS, suggestFieldName } from '../../lib/gemini.js'
+import { testConnection, extractVariables, MAX_CHARS, suggestFieldName, suggestFieldPattern } from '../../lib/gemini.js'
 
 const VALID_KEY = 'test-api-key'
 const SAMPLE_VARS = [
@@ -93,13 +93,13 @@ describe('extractVariables', () => {
 
 describe('suggestFieldName', () => {
   it('returns a valid camelCase field name from AI response', async () => {
-    mockGenerateContent.mockResolvedValue({ response: { text: () => 'ContractValue' } })
+    mockGenerateContent.mockResolvedValue({ response: { text: () => '{"fieldName":"ContractValue","description":"contract value"}' } })
     const result = await suggestFieldName('key', '$75,000', 'value shall be $75,000 payable', [])
-    expect(result).toBe('ContractValue')
+    expect(result).toEqual({ fieldName: 'ContractValue', description: 'contract value' })
   })
 
   it('includes selectedText, surroundingContext, and existingFields in the prompt', async () => {
-    mockGenerateContent.mockResolvedValue({ response: { text: () => 'FieldName' } })
+    mockGenerateContent.mockResolvedValue({ response: { text: () => '{"fieldName":"FieldName","description":""}' } })
     await suggestFieldName('key', 'Alice', 'name is Alice here', ['ExistingField'])
     const call = mockGenerateContent.mock.calls[0][0]
     expect(call).toContain('"Alice"')
@@ -131,5 +131,43 @@ describe('suggestFieldName', () => {
     mockGenerateContent.mockResolvedValue({ response: { text: () => '  ' } })
     const result = await suggestFieldName('key', 'text', 'ctx', [])
     expect(result).toBeNull()
+  })
+})
+
+describe('lang param — Vietnamese instruction', () => {
+  it('suggestFieldName appends Vietnamese instruction when lang=vi', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"fieldName":"clientName","description":"tên khách hàng"}' },
+    })
+    await suggestFieldName('key', 'Nguyen Van A', 'context', [], 'vi')
+    const prompt = mockGenerateContent.mock.calls[0][0]
+    expect(prompt).toContain('Respond in Vietnamese.')
+  })
+
+  it('suggestFieldName does NOT append instruction when lang=en', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"fieldName":"clientName","description":"client name"}' },
+    })
+    await suggestFieldName('key', 'John Doe', 'context', [], 'en')
+    const prompt = mockGenerateContent.mock.calls[0][0]
+    expect(prompt).not.toContain('Respond in Vietnamese.')
+  })
+
+  it('suggestFieldPattern appends Vietnamese instruction when lang=vi', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"label":"Name: ","value":"Nguyen Van A","fieldName":"clientName","description":"tên"}' },
+    })
+    await suggestFieldPattern('key', 'Name: Nguyen Van A', 'Nguyen Van A', [], '', 'vi')
+    const prompt = mockGenerateContent.mock.calls[0][0]
+    expect(prompt).toContain('Respond in Vietnamese.')
+  })
+
+  it('extractVariables appends Vietnamese instruction when lang=vi', async () => {
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '[{"name":"clientName","marker":"agreement with [VALUE] herein"}]' },
+    })
+    await extractVariables('key', 'some document content', 'vi')
+    const prompt = mockGenerateContent.mock.calls[0][0]
+    expect(prompt).toContain('Respond in Vietnamese.')
   })
 })
