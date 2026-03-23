@@ -6,7 +6,7 @@
  * This function decodes sheet names via DOMParser / .textContent, but passes
  * table fragments through verbatim so data-cell-address attributes stay escaped.
  *
- * @param {string|null} htmlString
+ * @param {string|null|undefined} htmlString
  * @returns {{ name: string, html: string }[]}
  */
 export function parseXlsxSheets(htmlString) {
