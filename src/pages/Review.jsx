@@ -6,6 +6,7 @@ import { insertDocx, insertXlsx } from '../lib/fieldEditor.js'
 import { suggestFieldName, suggestFieldPattern } from '../lib/gemini.js'
 import { saveTemplate } from '../lib/storage.js'
 import { parseXlsxSheets } from '../lib/renderers/xlsxSheetParser.js'
+import { useLanguage } from '../lib/i18n.jsx'
 
 const CHIP_COLORS = [
   'bg-blue-600', 'bg-green-600', 'bg-purple-600',
@@ -57,6 +58,30 @@ function parseCellAddr(addr) {
   return { sheet, col: m[1], row: m[2] }
 }
 
+// Convert column letter(s) to 0-based index: A=0, B=1, ..., Z=25, AA=26, ...
+function colLetterToIndex(col) {
+  let index = 0
+  for (let i = 0; i < col.length; i++) {
+    index = index * 26 + (col.charCodeAt(i) - 64)
+  }
+  return index - 1
+}
+
+// Convert 0-based index to column letter(s)
+function indexToColLetter(index) {
+  let col = ''
+  let n = index + 1
+  while (n > 0) {
+    const rem = (n - 1) % 26
+    col = String.fromCharCode(65 + rem) + col
+    n = Math.floor((n - 1) / 26)
+  }
+  return col
+}
+
+const XLSX_CONTEXT_MAX_WORDS = 400
+const XLSX_CONTEXT_RADIUS = 3  // rows and columns in each direction
+
 function getXlsxContext(td) {
   const table = td.closest('table')
   if (!table) return ''
@@ -67,46 +92,50 @@ function getXlsxContext(td) {
 
   const allCells = Array.from(table.querySelectorAll('td[data-cell-address]'))
   const cellMap = new Map(allCells.map(c => [c.dataset.cellAddress, c]))
-  const parts = []
 
-  // Column header: row 1 of same column
-  if (target.row !== '1') {
-    const text = cellMap.get(`${target.sheet}!${target.col}1`)?.textContent.trim()
-    if (text) parts.push(`column header: "${text}"`)
+  const targetRowNum = parseInt(target.row, 10)
+  const targetColIdx = colLetterToIndex(target.col)
+
+  const rowStart = Math.max(1, targetRowNum - XLSX_CONTEXT_RADIUS)
+  const rowEnd = targetRowNum + XLSX_CONTEXT_RADIUS
+  const colStart = Math.max(0, targetColIdx - XLSX_CONTEXT_RADIUS)
+  const colEnd = targetColIdx + XLSX_CONTEXT_RADIUS
+
+  const lines = []
+  let wordCount = 0
+
+  for (let r = rowStart; r <= rowEnd; r++) {
+    const cells = []
+    for (let c = colStart; c <= colEnd; c++) {
+      const colLetter = indexToColLetter(c)
+      const cellAddr = `${target.sheet}!${colLetter}${r}`
+      const cell = cellMap.get(cellAddr)
+      cells.push(cell ? cell.textContent.trim() : '')
+    }
+    const rowText = cells.join(' | ').replace(/(\| )+\|/g, '|').trim()
+    if (!rowText.replace(/\|/g, '').trim()) continue  // skip empty rows
+    const rowWords = rowText.split(/\s+/).filter(Boolean).length
+    if (wordCount + rowWords > XLSX_CONTEXT_MAX_WORDS) break
+    lines.push(rowText)
+    wordCount += rowWords
   }
 
-  // Row label: column A of same row
-  if (target.col !== 'A') {
-    const text = cellMap.get(`${target.sheet}!A${target.row}`)?.textContent.trim()
-    if (text) parts.push(`row label: "${text}"`)
-  }
-
-  // Adjacent cells in same row (excluding target)
-  const rowSiblings = allCells
-    .filter(c => {
-      if (c === td) return false
-      const p = parseCellAddr(c.dataset.cellAddress)
-      return p && p.sheet === target.sheet && p.row === target.row
-    })
-    .map(c => c.textContent.trim())
-    .filter(Boolean)
-    .slice(0, 3)
-  if (rowSiblings.length) parts.push(`row siblings: [${rowSiblings.join(', ')}]`)
-
-  return parts.join('; ')
+  return lines.join('\n')
 }
 
 export default function Review({ html: initialHtml, binary: initialBinary, format, fileName, fields: initialFields, apiKey, onSave, onBack }) {
+  const { t, lang } = useLanguage()
   const viewerRef = useRef(null)
   const [html, setHtml] = useState(initialHtml)
   const [binary, setBinary] = useState(initialBinary)
   const [fields, setFields] = useState(initialFields)
+  const [fieldDescriptions, setFieldDescriptions] = useState({})
   const [templateName, setTemplateName] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const [processing, setProcessing] = useState(false)
   const [popover, setPopover] = useState(null)
-  // popover shape: { state: 'loading'|'ready', label: string, fieldName: string, errorMsg: string, position: {top, left} }
+  // popover shape: { state: 'loading'|'ready', label: string, fieldName: string, description: string, errorMsg: string, position: {top, left} }
   const pendingRef = useRef(null)
   // pending shape (DOCX): { selectedText, paragraphIndex }
   // pending shape (XLSX): { cellAddress, fullCellText }
@@ -147,22 +176,22 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
-    setPopover({ state: 'loading', label: '', fieldName: '', errorMsg: '', position })
+    setPopover({ state: 'loading', label: '', fieldName: '', description: '', errorMsg: '', position })
     try {
       if (format === 'xlsx') {
         const { fullCellText } = pendingData
-        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields, surroundingContext)
-        setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName } : null)
+        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields, surroundingContext, lang)
+        setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName, description: result.description ?? '' } : null)
       } else {
-        const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields)
-        setPopover(prev => prev ? { ...prev, state: 'ready', label: '', fieldName: suggested ?? '' } : null)
+        const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields, lang)
+        setPopover(prev => prev ? { ...prev, state: 'ready', label: '', fieldName: suggested?.fieldName ?? '', description: suggested?.description ?? '' } : null)
       }
     } catch {
       setPopover(prev => prev
-        ? { ...prev, state: 'ready', label: '', fieldName: '', errorMsg: 'AI suggestion failed — enter values manually' }
+        ? { ...prev, state: 'ready', label: '', fieldName: '', description: '', errorMsg: t('review.errorAiFailed') }
         : null)
     }
-  }, [apiKey, fields, format])
+  }, [apiKey, fields, format, lang, t])
 
   const handleMouseUp = useCallback(async () => {
     const sel = window.getSelection()
@@ -176,18 +205,40 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       const focusPara = sel.focusNode?.parentElement?.closest('p') ?? null
 
       if (!anchorPara || anchorPara !== focusPara) {
-        setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: 'Select text within a single paragraph', position: { top: 80, left: 50 } })
+        setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: t('review.errorSingleParagraph'), position: { top: 80, left: 50 } })
         return
       }
 
       const allParas = Array.from(viewerRef.current.querySelectorAll('p'))
       const paragraphIndex = allParas.indexOf(anchorPara)
 
-      const docText = viewerRef.current.textContent
-      const selIdx = docText.indexOf(selectedText)
-      const before = selIdx > 0 ? docText.slice(Math.max(0, selIdx - 100), selIdx) : ''
-      const after = docText.slice(selIdx + selectedText.length, selIdx + selectedText.length + 100)
-      const surroundingContext = before + selectedText + after
+      // Build context from surrounding complete paragraphs, capped at 400 words
+      const DOCX_CONTEXT_MAX_WORDS = 400
+      const targetParaText = anchorPara.textContent.trim()
+      let wordCount = targetParaText.split(/\s+/).filter(Boolean).length
+      const beforeParas = []
+      const afterParas = []
+      for (
+        let bi = paragraphIndex - 1, ai = paragraphIndex + 1;
+        wordCount < DOCX_CONTEXT_MAX_WORDS && (bi >= 0 || ai < allParas.length);
+        bi--, ai++
+      ) {
+        if (bi >= 0) {
+          const text = allParas[bi].textContent.trim()
+          if (text) {
+            const w = text.split(/\s+/).filter(Boolean).length
+            if (wordCount + w <= DOCX_CONTEXT_MAX_WORDS) { beforeParas.unshift(text); wordCount += w }
+          }
+        }
+        if (ai < allParas.length && wordCount < DOCX_CONTEXT_MAX_WORDS) {
+          const text = allParas[ai].textContent.trim()
+          if (text) {
+            const w = text.split(/\s+/).filter(Boolean).length
+            if (wordCount + w <= DOCX_CONTEXT_MAX_WORDS) { afterParas.push(text); wordCount += w }
+          }
+        }
+      }
+      const surroundingContext = [...beforeParas, targetParaText, ...afterParas].join(' ')
 
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       await openSuggestion(selectedText, surroundingContext, { selectedText, paragraphIndex }, { top: rect.bottom + 8, left: rect.left })
@@ -202,7 +253,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       await openSuggestion(selectedText, surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
     }
-  }, [format, openSuggestion])
+  }, [format, openSuggestion, t])
 
   const handleClick = useCallback(async e => {
     if (format !== 'xlsx') return
@@ -215,14 +266,14 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     const fullCellText = td.textContent.trim()
 
     if (/^\{\{.+\}\}$/.test(fullCellText)) {
-      setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: 'This cell is already a field', position: { top: 80, left: 50 } })
+      setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: t('review.errorAlreadyField'), position: { top: 80, left: 50 } })
       return
     }
 
     const surroundingContext = getXlsxContext(td)
     const rect = td.getBoundingClientRect()
     await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
-  }, [format, openSuggestion])
+  }, [format, openSuggestion, t])
 
   const handleTabClick = useCallback((name) => {
     tabSwitchRef.current = true  // mark as tab switch so effect resets scroll
@@ -232,15 +283,15 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const handleAccept = async () => {
     const fieldName = popover.fieldName.trim()
     if (!fieldName) {
-      setPopover(prev => ({ ...prev, errorMsg: 'Field name is required' }))
+      setPopover(prev => ({ ...prev, errorMsg: t('review.errorFieldRequired') }))
       return
     }
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(fieldName)) {
-      setPopover(prev => ({ ...prev, errorMsg: 'Field name must start with a letter and contain only letters, digits, and underscores' }))
+      setPopover(prev => ({ ...prev, errorMsg: t('review.errorFieldFormat') }))
       return
     }
     if (fields.includes(fieldName)) {
-      setPopover(prev => ({ ...prev, errorMsg: 'Field name already used — choose another' }))
+      setPopover(prev => ({ ...prev, errorMsg: t('review.errorFieldDuplicate') }))
       return
     }
 
@@ -258,13 +309,16 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       }
 
       if (result.error) {
-        setPopover(prev => ({ ...prev, errorMsg: 'Could not locate selection in document — try selecting again' }))
+        setPopover(prev => ({ ...prev, errorMsg: t('review.errorInsertFailed') }))
         return
       }
 
       const newBinary = result.binary
       setBinary(newBinary)
       setFields(prev => [...prev, fieldName])
+      if (popover.description?.trim()) {
+        setFieldDescriptions(prev => ({ ...prev, [fieldName]: popover.description.trim() }))
+      }
 
       const { html: newHtml } = format === 'docx'
         ? await renderDocx(newBinary)
@@ -280,11 +334,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const handleSave = async () => {
     setSaveError(null)
     if (!templateName.trim()) {
-      setSaveError('Enter a template name')
+      setSaveError(t('review.errorNoName'))
       return
     }
     if (fields.length === 0) {
-      setSaveError('Define at least one field before saving')
+      setSaveError(t('review.errorNoFields'))
       return
     }
     setSaving(true)
@@ -295,11 +349,12 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         sourceFormat: format,
         binary,
         fields,
+        fieldDescriptions,
         createdAt: Date.now(),
       })
       onSave()
     } catch (err) {
-      setSaveError(`Save failed: ${err.message}`)
+      setSaveError(`${t('review.errorSaveFailed')} ${err.message}`)
     } finally {
       setSaving(false)
     }
@@ -308,26 +363,26 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   return (
     <div className="flex flex-col h-full">
       {/* Header bar */}
-      <div className="p-3 border-b border-gray-700 flex gap-2 items-center shrink-0">
+      <div className="p-3 border-b border-gray-200 flex gap-2 items-center shrink-0">
         <button
           onClick={onBack}
-          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded border border-gray-600"
+          className="text-xs text-gray-500 hover:text-gray-900 px-2 py-1 rounded border border-gray-300"
         >
-          ← Back
+          {t('review.back')}
         </button>
-        <span className="text-xs text-gray-500">{fields.length} field{fields.length !== 1 ? 's' : ''}</span>
+        <span className="text-xs text-gray-500">{fields.length} {t(fields.length === 1 ? 'review.fields' : 'review.fields_plural')}</span>
         <input
           value={templateName}
           onChange={e => setTemplateName(e.target.value)}
-          placeholder="Template name…"
-          className="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+          placeholder={t('review.templatePlaceholder')}
+          className="flex-1 bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500"
         />
         <button
           onClick={handleSave}
           disabled={saving}
           className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1 rounded"
         >
-          {saving ? 'Saving…' : 'Save Template'}
+          {saving ? t('review.saving') : t('review.save')}
         </button>
       </div>
 
@@ -336,15 +391,14 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       )}
 
       {format === 'xlsx' && (
-        <div className="px-3 py-2 text-xs text-gray-400 bg-gray-800/40 border-b border-gray-700 shrink-0">
-          <span className="font-medium text-gray-300">Click</span> a cell — AI will identify the label and value.
-          <span className="font-medium text-gray-300"> Select text</span> to hint which part is the value.
+        <div className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border-b border-gray-200 shrink-0">
+          {t('review.xlsxHint')}
         </div>
       )}
 
       {/* Sheet tab bar — only for xlsx workbooks with more than one sheet */}
       {format === 'xlsx' && sheets.length > 1 && (
-        <div role="tablist" aria-label="Worksheet tabs" className="flex overflow-x-auto whitespace-nowrap border-b border-gray-700 shrink-0 bg-gray-900">
+        <div role="tablist" aria-label={t('review.ariaTablist')} className="flex overflow-x-auto whitespace-nowrap border-b border-gray-200 shrink-0 bg-gray-50">
           {sheets.map(sheet => (
             <button
               role="tab"
@@ -353,8 +407,8 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
               onClick={() => handleTabClick(sheet.name)}
               className={`px-4 py-2 text-xs border-t-2 transition-colors ${
                 sheet.name === currentSheet
-                  ? 'border-blue-500 text-white bg-gray-800'
-                  : 'border-transparent text-gray-500 hover:text-gray-300'
+                  ? 'border-blue-500 text-gray-900 bg-white'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
               {sheet.name}
@@ -368,14 +422,14 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         <div
           data-testid="doc-viewer"
           ref={viewerRef}
-          className={`h-full overflow-y-auto p-3 text-sm text-gray-200 leading-relaxed${format === 'xlsx' ? ' [&_table]:border-collapse [&_table]:w-full [&_table]:text-xs [&_td]:border [&_td]:border-gray-600 [&_td]:px-2 [&_td]:py-1.5 [&_td[data-cell-address]]:cursor-pointer [&_td[data-cell-address]:hover]:bg-blue-900/25 [&_td[data-cell-address]:hover]:transition-colors' : ''}`}
+          className={`h-full overflow-y-auto p-3 text-sm text-gray-800 leading-relaxed${format === 'xlsx' ? ' [&_table]:border-collapse [&_table]:w-full [&_table]:text-xs [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1.5 [&_td[data-cell-address]]:cursor-pointer [&_td[data-cell-address]:hover]:bg-blue-50 [&_td[data-cell-address]:hover]:transition-colors' : ''}`}
           onMouseUp={handleMouseUp}
           onClick={handleClick}
         />
 
         {/* Spinner overlay during field insertion */}
         {processing && (
-          <div className="absolute inset-0 bg-gray-900/60 flex items-center justify-center">
+          <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
             <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
@@ -384,33 +438,33 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         {popover && (
           <div
             role="dialog"
-            aria-label="Field name suggestion"
-            className="absolute z-20 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 w-64"
+            aria-label={t('review.ariaPopover')}
+            className="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-64"
             style={{ top: popover.position.top, left: Math.min(popover.position.left, 120) }}
           >
             {popover.state === 'loading' ? (
-              <div className="flex items-center gap-2 text-xs text-gray-400">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
                 <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
-                Analyzing…
+                {t('review.analyzing')}
               </div>
             ) : (
               <>
                 {format === 'xlsx' && (
                   <>
-                    <label className="text-xs text-gray-400 block mb-1">
-                      Label (preserved)
+                    <label className="text-xs text-gray-500 block mb-1">
+                      {t('review.labelPreserved')}
                     </label>
                     <input
                       value={popover.label ?? ''}
                       onChange={e => setPopover(prev => ({ ...prev, label: e.target.value, errorMsg: '' }))}
                       onKeyDown={e => { if (e.key === 'Escape') setPopover(null) }}
                       placeholder="e.g. Name: "
-                      className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500 mb-2"
+                      className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
                     />
                   </>
                 )}
-                <label htmlFor="field-name-input" className="text-xs text-gray-400 block mb-1">
-                  Field name
+                <label htmlFor="field-name-input" className="text-xs text-gray-500 block mb-1">
+                  {t('review.fieldName')}
                 </label>
                 <input
                   id="field-name-input"
@@ -418,10 +472,26 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
                   value={popover.fieldName}
                   onChange={e => setPopover(prev => ({ ...prev, fieldName: e.target.value, errorMsg: '' }))}
                   onKeyDown={e => { if (e.key === 'Enter') handleAccept(); if (e.key === 'Escape') setPopover(null) }}
-                  className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500 mb-2"
+                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
+                />
+                <label htmlFor="field-description-input" className="text-xs text-gray-500 block mb-1">
+                  {t('review.description')} <span className="text-gray-400">{t('review.descriptionHint')}</span>
+                </label>
+                <input
+                  id="field-description-input"
+                  value={popover.description ?? ''}
+                  onChange={e => {
+                    const words = e.target.value.trim().split(/\s+/).filter(Boolean)
+                    if (words.length <= 10 || e.target.value.length < (popover.description ?? '').length) {
+                      setPopover(prev => ({ ...prev, description: e.target.value }))
+                    }
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAccept(); if (e.key === 'Escape') setPopover(null) }}
+                  placeholder={t('review.descriptionPlaceholder')}
+                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
                 />
                 {format === 'xlsx' && (popover.label || popover.fieldName) && (
-                  <p className="text-xs text-gray-500 mb-2 font-mono">
+                  <p className="text-xs text-gray-400 mb-2 font-mono">
                     {popover.label ?? ''}<span className="text-blue-400">{`{{${popover.fieldName || '…'}}}`}</span>
                   </p>
                 )}
@@ -433,13 +503,13 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
                     onClick={handleAccept}
                     className="flex-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded"
                   >
-                    Accept
+                    {t('review.accept')}
                   </button>
                   <button
                     onClick={() => setPopover(null)}
-                    className="text-xs text-gray-400 hover:text-white px-2 py-1"
+                    className="text-xs text-gray-500 hover:text-gray-900 px-2 py-1"
                   >
-                    Dismiss
+                    {t('review.dismiss')}
                   </button>
                 </div>
               </>
