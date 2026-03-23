@@ -52,12 +52,20 @@ export default function App() {
         <>
           <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 shrink-0">
             <span className="font-semibold">Doc Template Agent</span>
-            <button
-              className="text-xs text-gray-400 hover:text-white transition-colors"
-              onClick={() => setStep(3)}
-            >
-              Library
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                className="text-xs text-gray-400 hover:text-white transition-colors"
+                onClick={() => setStep(0)}
+              >
+                Change API Key
+              </button>
+              <button
+                className="text-xs text-gray-400 hover:text-white transition-colors"
+                onClick={() => setStep(3)}
+              >
+                Library
+              </button>
+            </div>
           </header>
           <ProgressBar step={step} />
           <div className="flex-1 overflow-auto">
