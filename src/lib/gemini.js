@@ -78,3 +78,75 @@ export async function suggestFieldName(apiKey, selectedText, surroundingContext,
   if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(raw)) return raw
   return null
 }
+
+/**
+ * Ask Gemini to identify the static label prefix and dynamic value in a cell.
+ * Returns { label, value, fieldName }.
+ * Throws on timeout or unrecoverable error (caller shows manual-entry popover).
+ * @param {string} apiKey
+ * @param {string} fullCellText
+ * @param {string} selectedText — empty string if no text selected (cell click)
+ * @param {string[]} existingFields
+ * @returns {Promise<{ label: string, value: string, fieldName: string }>}
+ */
+export async function suggestFieldPattern(apiKey, fullCellText, selectedText, existingFields) {
+  const selectedLine = selectedText
+    ? `User selected: "${selectedText}"\n`
+    : ''
+  const existingLine = existingFields.length
+    ? `Existing field names: [${existingFields.join(', ')}]\n`
+    : ''
+
+  const prompt =
+    `You are analyzing a spreadsheet cell for document templating.\n` +
+    `Cell content: "${fullCellText}"\n` +
+    selectedLine +
+    existingLine +
+    `Identify:\n` +
+    `- label: the static prefix to preserve (empty string if none)\n` +
+    `- value: the dynamic portion to replace with a template field\n` +
+    `- fieldName: a short camelCase name (must not match existing names)\n\n` +
+    `Respond with JSON only: {"label": "...", "value": "...", "fieldName": "..."}\n\n` +
+    `Rules:\n` +
+    `- label + value must equal the full cell content exactly\n` +
+    `- fieldName must match ^[a-zA-Z][a-zA-Z0-9_]*$\n` +
+    `- If no label prefix exists, return label as ""`
+
+  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
+  const raw = await Promise.race([
+    model.generateContent(prompt),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
+  ])
+  const text = raw.response.text().trim()
+
+  return _parseFieldPattern(text, fullCellText)
+}
+
+function _parseFieldPattern(text, fullCellText) {
+  let parsed
+  try {
+    const cleaned = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
+    parsed = JSON.parse(cleaned)
+  } catch {
+    return { label: '', value: fullCellText, fieldName: _sanitizeFieldName('') }
+  }
+
+  const { label = '', value = '', fieldName = '' } = parsed
+
+  // Validate constraint: label + value must reconstruct fullCellText
+  const resolvedLabel = (label + value === fullCellText) ? label : ''
+  const resolvedValue = (label + value === fullCellText) ? value : fullCellText
+
+  return {
+    label: resolvedLabel,
+    value: resolvedValue,
+    fieldName: _sanitizeFieldName(String(fieldName)),
+  }
+}
+
+function _sanitizeFieldName(raw) {
+  // Strip characters not in [a-zA-Z0-9_], then ensure starts with a letter
+  let name = raw.replace(/[^a-zA-Z0-9_]/g, '')
+  if (/^\d/.test(name)) name = 'field' + name
+  return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) ? name : 'field'
+}
