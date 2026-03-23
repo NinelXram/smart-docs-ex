@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useLanguage } from '../lib/i18n.jsx'
 
 export default function VariableChip({ name, onRename, onRemove, color }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(name)
+  const { t } = useLanguage()
 
   const commit = () => {
     setEditing(false)
@@ -35,7 +37,7 @@ export default function VariableChip({ name, onRename, onRemove, color }) {
       </button>
       <button
         onClick={onRemove}
-        aria-label="remove variable"
+        aria-label={t('variableChip.ariaRemove')}
         className="opacity-70 hover:opacity-100 leading-none"
       >
         ×
