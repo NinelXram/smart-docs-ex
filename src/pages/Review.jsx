@@ -11,14 +11,6 @@ const CHIP_COLORS = [
   'bg-orange-500', 'bg-pink-600', 'bg-teal-600',
 ]
 
-function encodeBase64(buffer) {
-  const bytes = new Uint8Array(buffer)
-  let str = ''
-  for (let i = 0; i < bytes.length; i += 8192) {
-    str += String.fromCharCode(...bytes.subarray(i, i + 8192))
-  }
-  return btoa(str)
-}
 
 function applyChipOverlay(container, fields) {
   if (!fields.length) return
@@ -207,12 +199,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     }
     setSaving(true)
     try {
-      const base64 = encodeBase64(binary)
       await saveTemplate({
         id: uuidv4(),
         name: templateName.trim(),
         sourceFormat: format,
-        binary: base64,
+        binary,
         fields,
         createdAt: Date.now(),
       })

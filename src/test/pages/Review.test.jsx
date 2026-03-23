@@ -197,7 +197,7 @@ describe('Review — DOCX', () => {
     expect(storage.saveTemplate).not.toHaveBeenCalled()
   })
 
-  it('saves template with base64-encoded binary and fields array', async () => {
+  it('saves template with raw ArrayBuffer binary and fields array', async () => {
     const newBinary = new ArrayBuffer(4)
     fieldEditor.insertDocx.mockReturnValue({ binary: newBinary })
     render(<Review {...DOCX_PROPS} />)
@@ -223,7 +223,7 @@ describe('Review — DOCX', () => {
           id: 'test-uuid',
           name: 'Sales Contract',
           sourceFormat: 'docx',
-          binary: expect.any(String), // base64 string
+          binary: expect.any(ArrayBuffer),
           fields: ['ClientName'],
         })
       )
