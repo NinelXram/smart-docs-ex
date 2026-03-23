@@ -272,10 +272,13 @@ function buildImageAnchors(buffer, sheetNames) {
       const drawingFile = zip.files[`xl/drawings/${drawingName}`]
       if (!drawingFile) continue
 
+      // Use getElementsByTagNameNS — querySelectorAll('from') silently
+      // returns nothing for namespace-prefixed elements in jsdom.
+      const XDR_NS = 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'
       const drawingDoc = new DOMParser().parseFromString(drawingFile.asText(), 'text/xml')
-      for (const fromEl of Array.from(drawingDoc.querySelectorAll('from'))) {
-        const col = parseInt(fromEl.querySelector('col')?.textContent ?? '-1', 10)
-        const row = parseInt(fromEl.querySelector('row')?.textContent ?? '-1', 10)
+      for (const fromEl of Array.from(drawingDoc.getElementsByTagNameNS(XDR_NS, 'from'))) {
+        const col = parseInt(fromEl.getElementsByTagNameNS(XDR_NS, 'col')[0]?.textContent ?? '-1', 10)
+        const row = parseInt(fromEl.getElementsByTagNameNS(XDR_NS, 'row')[0]?.textContent ?? '-1', 10)
         if (col >= 0 && row >= 0) anchors.get(sheetName).add(`${col},${row}`)
       }
     }
