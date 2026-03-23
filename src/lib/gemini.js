@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import * as mammoth from 'mammoth'
 
 const MODEL = 'gemini-2.0-flash'
 export const MAX_CHARS = 750_000
@@ -171,4 +172,93 @@ function _sanitizeFieldName(raw) {
   let name = raw.replace(/[^a-zA-Z0-9_]/g, '')
   if (/^\d/.test(name)) name = 'field' + name
   return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) ? name : 'field'
+}
+
+const MAX_BINARY_BYTES = 4 * 1024 * 1024 // 4 MB
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+function _buildAnalyzePrompt(fields, lang) {
+  const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
+  return (
+    `You are filling in a document template. The template has these fields: [${fields.join(', ')}].\n` +
+    `Extract the value for each field from the source document provided.\n` +
+    `Return a JSON object mapping each field name to its value. Only include fields you find.\n` +
+    `Respond with ONLY the JSON object, no markdown, no explanation.` +
+    langInstruction
+  )
+}
+
+function _parseAnalyzeResponse(text, fields) {
+  const cleaned = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
+  const parsed = JSON.parse(cleaned)
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('MALFORMED_RESPONSE')
+  const result = {}
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(parsed, field)) {
+      result[field] = parsed[field]
+    }
+  }
+  return result
+}
+
+/**
+ * Analyze a source file and extract values for the given template fields.
+ * Images and PDFs are sent as inlineData; DOCX and TXT are sent as text.
+ * @param {string} apiKey
+ * @param {File|{type:string,size:number,arrayBuffer:Function,text:Function}} file
+ * @param {string[]} fields
+ * @param {string} [lang]
+ * @returns {Promise<Record<string,string>>}
+ */
+export async function analyzeSource(apiKey, file, fields, lang = 'vi') {
+  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
+  const prompt = _buildAnalyzePrompt(fields, lang)
+
+  let contents
+
+  if (file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'image/gif' ||
+      file.type === 'image/webp' || file.type === 'application/pdf') {
+    // Binary path — size guard
+    if (file.size > MAX_BINARY_BYTES) {
+      throw new Error(`File too large: ${file.size} bytes (max ${MAX_BINARY_BYTES})`)
+    }
+    const buffer = await file.arrayBuffer()
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    contents = [{ inlineData: { mimeType: file.type, data: base64 } }, { text: prompt }]
+  } else if (file.type === DOCX_MIME) {
+    // DOCX — extract plain text via mammoth
+    const buffer = await file.arrayBuffer()
+    const { value: text } = await mammoth.extractRawText({ arrayBuffer: buffer })
+    if (text.length > MAX_CHARS) {
+      throw new Error(`Document too large: ${text.length} chars (max ${MAX_CHARS})`)
+    }
+    contents = `${prompt}\n\nDocument content:\n${text}`
+  } else {
+    // Plain text path
+    const text = await file.text()
+    if (text.length > MAX_CHARS) {
+      throw new Error(`Document too large: ${text.length} chars (max ${MAX_CHARS})`)
+    }
+    contents = `${prompt}\n\nDocument content:\n${text}`
+  }
+
+  let responseText
+  try {
+    const result = await model.generateContent(contents)
+    responseText = result.response.text()
+  } catch (err) {
+    throw new Error(`Gemini API error: ${err.message}`)
+  }
+
+  try {
+    return _parseAnalyzeResponse(responseText, fields)
+  } catch {
+    // Retry once
+    try {
+      const retryResult = await model.generateContent(contents)
+      return _parseAnalyzeResponse(retryResult.response.text(), fields)
+    } catch {
+      throw new Error('MALFORMED_RESPONSE')
+    }
+  }
 }
