@@ -9,7 +9,12 @@ vi.mock('@google/generative-ai', () => ({
   })),
 }))
 
-import { testConnection, extractVariables, MAX_CHARS, suggestFieldName, suggestFieldPattern } from '../../lib/gemini.js'
+vi.mock('mammoth', () => ({
+  extractRawText: vi.fn(),
+}))
+
+import * as mammoth from 'mammoth'
+import { testConnection, extractVariables, MAX_CHARS, suggestFieldName, suggestFieldPattern, analyzeSource } from '../../lib/gemini.js'
 
 const VALID_KEY = 'test-api-key'
 const SAMPLE_VARS = [
@@ -169,5 +174,126 @@ describe('lang param — Vietnamese instruction', () => {
     await extractVariables('key', 'some document content', 'vi')
     const prompt = mockGenerateContent.mock.calls[0][0]
     expect(prompt).toContain('Respond in Vietnamese.')
+  })
+})
+
+describe('analyzeSource', () => {
+  const FIELDS = ['fullName', 'jobTitle']
+
+  function makeFile({ type = 'image/png', size = 100, content = new ArrayBuffer(8) } = {}) {
+    return {
+      type,
+      size,
+      arrayBuffer: vi.fn().mockResolvedValue(content),
+      text: vi.fn().mockResolvedValue('plain text content'),
+    }
+  }
+
+  it('sends image as inlineData and returns matched fields', async () => {
+    const file = makeFile({ type: 'image/png', size: 100 })
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"fullName":"Jane","jobTitle":"Engineer","unknown":"x"}' },
+    })
+    const result = await analyzeSource(VALID_KEY, file, FIELDS)
+    expect(result).toEqual({ fullName: 'Jane', jobTitle: 'Engineer' })
+    // inlineData call shape: array with inlineData + text parts
+    const call = mockGenerateContent.mock.calls[0][0]
+    expect(Array.isArray(call)).toBe(true)
+    expect(call[0]).toHaveProperty('inlineData')
+    expect(call[0].inlineData.mimeType).toBe('image/png')
+  })
+
+  it('sends PDF as inlineData with mimeType application/pdf', async () => {
+    const file = makeFile({ type: 'application/pdf', size: 100 })
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{}' },
+    })
+    await analyzeSource(VALID_KEY, file, FIELDS)
+    const call = mockGenerateContent.mock.calls[0][0]
+    expect(call[0].inlineData.mimeType).toBe('application/pdf')
+  })
+
+  it('extracts DOCX text via mammoth and sends as text prompt', async () => {
+    const file = makeFile({ type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 100 })
+    mammoth.extractRawText.mockResolvedValue({ value: 'extracted docx text' })
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"fullName":"Bob"}' },
+    })
+    const result = await analyzeSource(VALID_KEY, file, FIELDS)
+    expect(mammoth.extractRawText).toHaveBeenCalledWith({ arrayBuffer: expect.any(ArrayBuffer) })
+    expect(result).toEqual({ fullName: 'Bob' })
+    // text-path call shape: plain string (not array)
+    const call = mockGenerateContent.mock.calls[0][0]
+    expect(typeof call).toBe('string')
+    expect(call).toContain('extracted docx text')
+  })
+
+  it('reads TXT via file.text() and sends as text prompt', async () => {
+    const file = makeFile({ type: 'text/plain', size: 100 })
+    file.text.mockResolvedValue('hello world')
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"jobTitle":"Dev"}' },
+    })
+    const result = await analyzeSource(VALID_KEY, file, FIELDS)
+    expect(file.text).toHaveBeenCalled()
+    expect(result).toEqual({ jobTitle: 'Dev' })
+  })
+
+  it('throws if binary file exceeds 4 MB', async () => {
+    const file = makeFile({ type: 'image/png', size: 4 * 1024 * 1024 + 1 })
+    await expect(analyzeSource(VALID_KEY, file, FIELDS)).rejects.toThrow()
+    expect(mockGenerateContent).not.toHaveBeenCalled()
+  })
+
+  it('throws if text content exceeds MAX_CHARS', async () => {
+    const file = makeFile({ type: 'text/plain', size: 100 })
+    file.text.mockResolvedValue('a'.repeat(MAX_CHARS + 1))
+    await expect(analyzeSource(VALID_KEY, file, FIELDS)).rejects.toThrow()
+    expect(mockGenerateContent).not.toHaveBeenCalled()
+  })
+
+  it('strips markdown fences and parses JSON', async () => {
+    const file = makeFile({ type: 'image/png', size: 100 })
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '```json\n{"fullName":"Alice"}\n```' },
+    })
+    const result = await analyzeSource(VALID_KEY, file, FIELDS)
+    expect(result).toEqual({ fullName: 'Alice' })
+  })
+
+  it('retries once on malformed JSON and throws on second failure', async () => {
+    const file = makeFile({ type: 'image/png', size: 100 })
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => 'not json' },
+    })
+    await expect(analyzeSource(VALID_KEY, file, FIELDS)).rejects.toThrow()
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns empty object when no fields match', async () => {
+    const file = makeFile({ type: 'image/png', size: 100 })
+    mockGenerateContent.mockResolvedValue({
+      response: { text: () => '{"unknown":"x","other":"y"}' },
+    })
+    const result = await analyzeSource(VALID_KEY, file, FIELDS)
+    expect(result).toEqual({})
+  })
+
+  it('appends Vietnamese instruction when lang=vi', async () => {
+    const file = makeFile({ type: 'image/png', size: 100 })
+    mockGenerateContent.mockResolvedValue({ response: { text: () => '{}' } })
+    await analyzeSource(VALID_KEY, file, FIELDS, 'vi')
+    const call = mockGenerateContent.mock.calls[0][0]
+    const textPart = Array.isArray(call) ? call[1].text : call
+    expect(textPart).toContain('Respond in Vietnamese.')
+  })
+
+  it('does not append Vietnamese instruction when lang=en', async () => {
+    const file = makeFile({ type: 'image/png', size: 100 })
+    mockGenerateContent.mockResolvedValue({ response: { text: () => '{}' } })
+    await analyzeSource(VALID_KEY, file, FIELDS, 'en')
+    const call = mockGenerateContent.mock.calls[0][0]
+    const textPart = Array.isArray(call) ? call[1].text : call
+    expect(textPart).not.toContain('Respond in Vietnamese.')
   })
 })
