@@ -148,27 +148,27 @@ function readXlsxCell(binary, sheetName, cellRef) {
 describe('insertXlsx', () => {
   it('replaces cell value with {{fieldName}}', () => {
     const binary = buildXlsx({ Sheet1: { B3: '$75,000' } })
-    const result = insertXlsx(binary, 'Sheet1!B3', 'ContractValue')
+    const result = insertXlsx(binary, 'Sheet1!B3', 'ContractValue', '{{ContractValue}}')
     expect(result.error).toBeUndefined()
     expect(readXlsxCell(result.binary, 'Sheet1', 'B3')).toBe('{{ContractValue}}')
   })
 
   it('preserves cell type as string', () => {
     const binary = buildXlsx({ Sheet1: { A1: '2024-01-01' } })
-    const result = insertXlsx(binary, 'Sheet1!A1', 'EffectiveDate')
+    const result = insertXlsx(binary, 'Sheet1!A1', 'EffectiveDate', '{{EffectiveDate}}')
     const wb = XLSX.read(result.binary, { type: 'array' })
     expect(wb.Sheets['Sheet1']['A1'].t).toBe('s')
   })
 
   it('returns error for invalid cell address format', () => {
     const binary = buildXlsx({ Sheet1: { A1: 'x' } })
-    const result = insertXlsx(binary, 'B3', 'Field') // missing sheet name
+    const result = insertXlsx(binary, 'B3', 'Field', '{{Field}}') // missing sheet name
     expect(result.error).toBe('invalid_cell_address')
   })
 
   it('returns error when sheet is not found', () => {
     const binary = buildXlsx({ Sheet1: { A1: 'x' } })
-    const result = insertXlsx(binary, 'MissingSheet!A1', 'Field')
+    const result = insertXlsx(binary, 'MissingSheet!A1', 'Field', '{{Field}}')
     expect(result.error).toBe('sheet_not_found')
   })
 })
@@ -216,7 +216,7 @@ describe('insertXlsx — drawing preservation', () => {
     zip.file('xl/drawings/drawing1.xml', `<?xml version="1.0" encoding="UTF-8"?><root/>`)
 
     const buffer = zip.generate({ type: 'arraybuffer' })
-    const result = insertXlsx(buffer, 'Sheet1!A1', 'ClientName')
+    const result = insertXlsx(buffer, 'Sheet1!A1', 'ClientName', '{{ClientName}}')
     expect(result.error).toBeUndefined()
 
     const outZip = new PizZip(result.binary)
