@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { renderDocx } from '../lib/renderers/docx.js'
 import { renderXlsx } from '../lib/renderers/xlsx.js'
 import { insertDocx, insertXlsx } from '../lib/fieldEditor.js'
 import { suggestFieldName, suggestFieldPattern } from '../lib/gemini.js'
 import { saveTemplate } from '../lib/storage.js'
+import { parseXlsxSheets } from '../lib/renderers/xlsxSheetParser.js'
 
 const CHIP_COLORS = [
   'bg-blue-600', 'bg-green-600', 'bg-purple-600',
@@ -46,16 +47,53 @@ function applyChipOverlay(container, fields) {
   }
 }
 
+function parseCellAddr(addr) {
+  const bang = addr.indexOf('!')
+  if (bang === -1) return null
+  const sheet = addr.slice(0, bang)
+  const ref = addr.slice(bang + 1)
+  const m = ref.match(/^([A-Z]+)(\d+)$/)
+  if (!m) return null
+  return { sheet, col: m[1], row: m[2] }
+}
+
 function getXlsxContext(td) {
   const table = td.closest('table')
   if (!table) return ''
-  const allCells = Array.from(table.querySelectorAll('td'))
-  const idx = allCells.indexOf(td)
-  const radius = 2
-  const contextCells = allCells
-    .slice(Math.max(0, idx - radius), idx)
-    .concat(allCells.slice(idx + 1, idx + 1 + radius))
-  return contextCells.map(c => c.textContent.trim()).filter(Boolean).join(' ')
+  const addr = td.dataset.cellAddress
+  if (!addr) return ''
+  const target = parseCellAddr(addr)
+  if (!target) return ''
+
+  const allCells = Array.from(table.querySelectorAll('td[data-cell-address]'))
+  const cellMap = new Map(allCells.map(c => [c.dataset.cellAddress, c]))
+  const parts = []
+
+  // Column header: row 1 of same column
+  if (target.row !== '1') {
+    const text = cellMap.get(`${target.sheet}!${target.col}1`)?.textContent.trim()
+    if (text) parts.push(`column header: "${text}"`)
+  }
+
+  // Row label: column A of same row
+  if (target.col !== 'A') {
+    const text = cellMap.get(`${target.sheet}!A${target.row}`)?.textContent.trim()
+    if (text) parts.push(`row label: "${text}"`)
+  }
+
+  // Adjacent cells in same row (excluding target)
+  const rowSiblings = allCells
+    .filter(c => {
+      if (c === td) return false
+      const p = parseCellAddr(c.dataset.cellAddress)
+      return p && p.sheet === target.sheet && p.row === target.row
+    })
+    .map(c => c.textContent.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+  if (rowSiblings.length) parts.push(`row siblings: [${rowSiblings.join(', ')}]`)
+
+  return parts.join('; ')
 }
 
 export default function Review({ html: initialHtml, binary: initialBinary, format, fileName, fields: initialFields, apiKey, onSave, onBack }) {
@@ -73,14 +111,37 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   // pending shape (DOCX): { selectedText, paragraphIndex }
   // pending shape (XLSX): { cellAddress, fullCellText }
 
-  // Apply html to DOM and run chip overlay after every html/fields update
+  const [currentSheet, setCurrentSheet] = useState(null)
+  const tabSwitchRef = useRef(false)
+
+  const sheets = useMemo(
+    () => (format === 'xlsx' ? parseXlsxSheets(html) : []),
+    [html, format]
+  )
+
+  // Apply active sheet (or full html for DOCX) to DOM after html, fields, or tab change.
+  // tabSwitchRef distinguishes explicit tab switches (scroll → 0) from re-renders (preserve scroll).
   useEffect(() => {
     if (!viewerRef.current) return
-    const scrollTop = viewerRef.current.scrollTop
-    viewerRef.current.innerHTML = html
+
+    const isXlsx = format === 'xlsx' && sheets.length > 0
+    const active = isXlsx
+      ? (sheets.find(s => s.name === currentSheet) ?? sheets[0])
+      : null
+
+    // Sync currentSheet on first mount (null) or if active sheet changed
+    if (isXlsx && active.name !== currentSheet) {
+      setCurrentSheet(active.name)
+      // Note: setCurrentSheet schedules a re-render but active.html is already correct here
+    }
+
+    const scrollTop = tabSwitchRef.current ? 0 : viewerRef.current.scrollTop
+    tabSwitchRef.current = false
+
+    viewerRef.current.innerHTML = isXlsx ? active.html : html
     applyChipOverlay(viewerRef.current, fields)
     viewerRef.current.scrollTop = scrollTop
-  }, [html, fields])
+  }, [html, fields, currentSheet])
 
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
@@ -88,7 +149,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     try {
       if (format === 'xlsx') {
         const { fullCellText } = pendingData
-        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields)
+        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields, surroundingContext)
         setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName } : null)
       } else {
         const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields)
@@ -279,7 +340,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         <div
           data-testid="doc-viewer"
           ref={viewerRef}
-          className={`h-full overflow-y-auto p-3 text-sm text-gray-200 leading-relaxed${format === 'xlsx' ? ' [&_table]:border-collapse [&_table]:w-full [&_table]:text-xs [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-gray-400 [&_h3]:uppercase [&_h3]:tracking-wide [&_h3]:mt-3 [&_h3]:mb-1 [&_td]:border [&_td]:border-gray-600 [&_td]:px-2 [&_td]:py-1.5 [&_td[data-cell-address]]:cursor-pointer [&_td[data-cell-address]:hover]:bg-blue-900/25 [&_td[data-cell-address]:hover]:transition-colors' : ''}`}
+          className={`h-full overflow-y-auto p-3 text-sm text-gray-200 leading-relaxed${format === 'xlsx' ? ' [&_table]:border-collapse [&_table]:w-full [&_table]:text-xs [&_td]:border [&_td]:border-gray-600 [&_td]:px-2 [&_td]:py-1.5 [&_td[data-cell-address]]:cursor-pointer [&_td[data-cell-address]:hover]:bg-blue-900/25 [&_td[data-cell-address]:hover]:transition-colors' : ''}`}
           onMouseUp={handleMouseUp}
           onClick={handleClick}
         />
