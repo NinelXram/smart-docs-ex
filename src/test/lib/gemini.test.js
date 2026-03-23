@@ -113,10 +113,18 @@ describe('suggestFieldName', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null when API call throws', async () => {
+  it('throws when API call fails', async () => {
     mockGenerateContent.mockRejectedValue(new Error('Network error'))
-    const result = await suggestFieldName('key', 'text', 'ctx', [])
-    expect(result).toBeNull()
+    await expect(suggestFieldName('key', 'text', 'ctx', [])).rejects.toThrow('Network error')
+  })
+
+  it('throws on timeout after 10 seconds', async () => {
+    vi.useFakeTimers()
+    mockGenerateContent.mockReturnValue(new Promise(() => {})) // never resolves
+    const promise = suggestFieldName('key', 'text', 'ctx', [])
+    vi.advanceTimersByTime(10001)
+    await expect(promise).rejects.toThrow('timeout')
+    vi.useRealTimers()
   })
 
   it('returns null when response is empty string', async () => {

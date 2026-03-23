@@ -157,6 +157,21 @@ describe('Review — DOCX', () => {
     )
   })
 
+  it('shows AI suggestion failed message when suggestFieldName rejects', async () => {
+    gemini.suggestFieldName.mockRejectedValueOnce(new Error('Network error'))
+    render(<Review {...DOCX_PROPS} />)
+    const viewer = document.querySelector('[data-testid="doc-viewer"]')
+    const para = viewer.querySelector('p')
+
+    mockSelection(para.firstChild, para.firstChild, 'Acme Corp')
+    await act(async () => { fireEvent.mouseUp(viewer) })
+
+    await waitFor(() =>
+      expect(screen.getByText(/AI suggestion failed/i)).toBeInTheDocument()
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('dismisses popover on Dismiss click', async () => {
     render(<Review {...DOCX_PROPS} />)
     const viewer = document.querySelector('[data-testid="doc-viewer"]')

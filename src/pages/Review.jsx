@@ -93,8 +93,14 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
     setPopover({ state: 'loading', fieldName: '', errorMsg: '', position })
-    const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields)
-    setPopover(prev => prev ? { ...prev, state: 'ready', fieldName: suggested ?? '' } : null)
+    try {
+      const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields)
+      setPopover(prev => prev ? { ...prev, state: 'ready', fieldName: suggested ?? '' } : null)
+    } catch {
+      setPopover(prev => prev
+        ? { ...prev, state: 'ready', fieldName: '', errorMsg: 'AI suggestion failed — enter a name manually' }
+        : null)
+    }
   }, [apiKey, fields])
 
   const handleMouseUp = useCallback(async () => {

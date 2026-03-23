@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const MODEL = 'gemini-flash-latest'
+const MODEL = 'gemini-2.0-flash'
 export const MAX_CHARS = 750_000
 
 function buildPrompt(content) {
@@ -69,13 +69,12 @@ export async function extractVariables(apiKey, content) {
 export async function suggestFieldName(apiKey, selectedText, surroundingContext, existingFields) {
   const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFields.join(', ')}]. Suggest a concise camelCase field name for the selected text. Return only the field name, nothing else.`
 
-  try {
-    const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text().trim()
-    if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(raw)) return raw
-    return null
-  } catch {
-    return null
-  }
+  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
+  const result = await Promise.race([
+    model.generateContent(prompt),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
+  ])
+  const raw = result.response.text().trim()
+  if (/^[a-zA-Z][a-zA-Z0-9_]*$/.test(raw)) return raw
+  return null
 }
