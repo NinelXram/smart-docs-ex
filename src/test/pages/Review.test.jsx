@@ -13,6 +13,7 @@ vi.mock('../../lib/fieldEditor.js', () => ({
 }))
 vi.mock('../../lib/gemini.js', () => ({
   suggestFieldName: vi.fn().mockResolvedValue('ClientName'),
+  suggestFieldPattern: vi.fn().mockResolvedValue({ label: 'Amount: ', value: '$75,000', fieldName: 'amount' }),
 }))
 vi.mock('../../lib/storage.js', () => ({
   saveTemplate: vi.fn().mockResolvedValue(undefined),
@@ -232,8 +233,22 @@ describe('Review — DOCX', () => {
   })
 })
 
+// Helper to set a collapsed selection (no text selected) — needed for cell-click tests
+function mockCollapsedSelection() {
+  const mockSel = {
+    isCollapsed: true,
+    toString: () => '',
+    anchorNode: null,
+    focusNode: null,
+    getRangeAt: () => ({ getBoundingClientRect: () => ({ bottom: 100, left: 50 }) }),
+    removeAllRanges: vi.fn(),
+  }
+  Object.defineProperty(window, 'getSelection', { value: () => mockSel, configurable: true })
+}
+
 describe('Review — XLSX', () => {
   it('shows popover when a table cell is clicked', async () => {
+    mockCollapsedSelection()
     render(<Review {...XLSX_PROPS} />)
     const viewer = document.querySelector('[data-testid="doc-viewer"]')
     const cell = viewer.querySelector('td[data-cell-address]')
@@ -244,6 +259,7 @@ describe('Review — XLSX', () => {
   })
 
   it('shows "already a field" error when cell contains {{...}}', async () => {
+    mockCollapsedSelection()
     const html = '<table><tr><td data-cell-address="Sheet1!A1">{{Existing}}</td></tr></table>'
     render(<Review {...XLSX_PROPS} html={html} />)
     const viewer = document.querySelector('[data-testid="doc-viewer"]')
@@ -256,6 +272,7 @@ describe('Review — XLSX', () => {
   })
 
   it('calls insertXlsx on Accept', async () => {
+    mockCollapsedSelection()
     const newBinary = new ArrayBuffer(16)
     fieldEditor.insertXlsx.mockReturnValue({ binary: newBinary })
     render(<Review {...XLSX_PROPS} />)
