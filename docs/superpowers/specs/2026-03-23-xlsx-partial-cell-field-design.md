@@ -110,7 +110,7 @@ Rules:
 > **Note:** The prompt rule `label + value === fullCellText` is advisory — it guides Gemini but cannot be enforced by the caller. The validation fallback below is the authoritative safeguard and is always executed regardless of whether the rule appears satisfied.
 
 1. Parse JSON — check `label`, `value`, `fieldName` all present
-2. Verify `label + value === fullCellText` — if not, fall back to `{ label: "", value: fullCellText, fieldName }` using existing `suggestFieldName` logic for the name
+2. Verify `label + value === fullCellText` — if not, fall back to `{ label: "", value: fullCellText, fieldName }` using the `fieldName` value already returned in the Gemini response (then apply the regex sanitization in step 3 — no second network call)
 3. Verify `fieldName` matches `^[a-zA-Z][a-zA-Z0-9_]*$` — if not, strip non-matching characters and prepend `field` if result starts with a digit; if result is empty, fall back to `"field"`
 
 ### Error Fallback
