@@ -140,7 +140,8 @@ describe('Review XLSX — sheet tabs', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     const viewer = document.querySelector('[data-testid="doc-viewer"]')
-    expect(viewer.innerHTML).toContain('Expenses')
+    // After insertion, "Expenses" is replaced by {{expenses}} chip — Sheet2 still active
+    expect(viewer.innerHTML).toContain('Sheet2!')  // Sheet2 data-cell-address still in DOM
     expect(viewer.innerHTML).not.toContain('Revenue')
   })
 
