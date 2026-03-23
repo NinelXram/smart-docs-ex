@@ -84,21 +84,22 @@ export async function generateXlsx(binary, values) {
         if (!vEl) continue
         const idx = parseInt(vEl.textContent, 10)
         if (isNaN(idx) || idx < 0 || idx >= siEls.length) continue
-        const tEls = siEls[idx].getElementsByTagNameNS(ns, 't')
+        const tEls = Array.from(siEls[idx].getElementsByTagNameNS(ns, 't'))
         if (!tEls.length) continue
-        const text = tEls[0].textContent
-        const match = text.match(/^\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}$/)
-        if (match && match[1] in values) {
-          ssUpdates.set(idx, values[match[1]])
-        }
+        const text = tEls.map(t => t.textContent).join('')
+        const newText = text.replace(/\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g,
+          (_, field) => field in values ? values[field] : `{{${field}}}`)
+        if (newText !== text) ssUpdates.set(idx, newText)
       } else if (t === 'inlineStr') {
         const isEl = cell.getElementsByTagNameNS(ns, 'is')[0]
         if (!isEl) continue
         const tEl = isEl.getElementsByTagNameNS(ns, 't')[0]
         if (!tEl) continue
-        const match = tEl.textContent.match(/^\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}$/)
-        if (match && match[1] in values) {
-          tEl.textContent = values[match[1]]
+        const original = tEl.textContent
+        const newText = original.replace(/\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g,
+          (_, field) => field in values ? values[field] : `{{${field}}}`)
+        if (newText !== original) {
+          tEl.textContent = newText
           sheetModified = true
         }
       }
@@ -112,8 +113,15 @@ export async function generateXlsx(binary, values) {
   // Apply shared string updates
   if (ssDoc && ssUpdates.size > 0) {
     for (const [idx, value] of ssUpdates) {
-      const tEls = siEls[idx].getElementsByTagNameNS(ns, 't')
-      if (tEls.length) tEls[0].textContent = value
+      const siEl = siEls[idx]
+      // Flatten to a single <t> to handle rich-text (multi-run) shared strings
+      while (siEl.firstChild) siEl.removeChild(siEl.firstChild)
+      const tEl = ssDoc.createElementNS(ns, 't')
+      tEl.textContent = value
+      if (value.startsWith(' ') || value.endsWith(' ')) {
+        tEl.setAttribute('xml:space', 'preserve')
+      }
+      siEl.appendChild(tEl)
     }
     zip.file(ssPath, new XMLSerializer().serializeToString(ssDoc), { compression: 'DEFLATE' })
   }

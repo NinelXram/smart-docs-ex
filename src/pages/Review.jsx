@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { renderDocx } from '../lib/renderers/docx.js'
 import { renderXlsx } from '../lib/renderers/xlsx.js'
 import { insertDocx, insertXlsx } from '../lib/fieldEditor.js'
-import { suggestFieldName } from '../lib/gemini.js'
+import { suggestFieldName, suggestFieldPattern } from '../lib/gemini.js'
 import { saveTemplate } from '../lib/storage.js'
 
 const CHIP_COLORS = [
@@ -68,10 +68,10 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const [saveError, setSaveError] = useState(null)
   const [processing, setProcessing] = useState(false)
   const [popover, setPopover] = useState(null)
-  // popover shape: { state: 'loading'|'ready', fieldName: string, errorMsg: string, position: {top, left} }
+  // popover shape: { state: 'loading'|'ready', label: string, fieldName: string, errorMsg: string, position: {top, left} }
   const pendingRef = useRef(null)
   // pending shape (DOCX): { selectedText, paragraphIndex }
-  // pending shape (XLSX): { cellAddress, selectedText }
+  // pending shape (XLSX): { cellAddress, fullCellText }
 
   // Apply html to DOM and run chip overlay after every html/fields update
   useEffect(() => {
@@ -84,61 +84,81 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
-    setPopover({ state: 'loading', fieldName: '', errorMsg: '', position })
+    setPopover({ state: 'loading', label: '', fieldName: '', errorMsg: '', position })
     try {
-      const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields)
-      setPopover(prev => prev ? { ...prev, state: 'ready', fieldName: suggested ?? '' } : null)
+      if (format === 'xlsx') {
+        const { fullCellText } = pendingData
+        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields)
+        setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName } : null)
+      } else {
+        const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields)
+        setPopover(prev => prev ? { ...prev, state: 'ready', label: '', fieldName: suggested ?? '' } : null)
+      }
     } catch {
       setPopover(prev => prev
-        ? { ...prev, state: 'ready', fieldName: '', errorMsg: 'AI suggestion failed — enter a name manually' }
+        ? { ...prev, state: 'ready', label: '', fieldName: '', errorMsg: 'AI suggestion failed — enter values manually' }
         : null)
     }
-  }, [apiKey, fields])
+  }, [apiKey, fields, format])
 
   const handleMouseUp = useCallback(async () => {
-    if (format !== 'docx') return
     const sel = window.getSelection()
     if (!sel || sel.isCollapsed) return
     const selectedText = sel.toString().trim()
     if (selectedText.replace(/\s/g, '').length < 3) return
 
-    // anchorNode/focusNode may be text nodes (no .closest); use parentElement first
-    const anchorPara = sel.anchorNode?.parentElement?.closest('p') ?? null
-    const focusPara = sel.focusNode?.parentElement?.closest('p') ?? null
+    if (format === 'docx') {
+      // anchorNode/focusNode may be text nodes (no .closest); use parentElement first
+      const anchorPara = sel.anchorNode?.parentElement?.closest('p') ?? null
+      const focusPara = sel.focusNode?.parentElement?.closest('p') ?? null
 
-    if (!anchorPara || anchorPara !== focusPara) {
-      setPopover({ state: 'ready', fieldName: '', errorMsg: 'Select text within a single paragraph', position: { top: 80, left: 50 } })
-      return
+      if (!anchorPara || anchorPara !== focusPara) {
+        setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: 'Select text within a single paragraph', position: { top: 80, left: 50 } })
+        return
+      }
+
+      const allParas = Array.from(viewerRef.current.querySelectorAll('p'))
+      const paragraphIndex = allParas.indexOf(anchorPara)
+
+      const docText = viewerRef.current.textContent
+      const selIdx = docText.indexOf(selectedText)
+      const before = selIdx > 0 ? docText.slice(Math.max(0, selIdx - 100), selIdx) : ''
+      const after = docText.slice(selIdx + selectedText.length, selIdx + selectedText.length + 100)
+      const surroundingContext = before + selectedText + after
+
+      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      await openSuggestion(selectedText, surroundingContext, { selectedText, paragraphIndex }, { top: rect.bottom + 8, left: rect.left })
+    } else if (format === 'xlsx') {
+      const anchorCell = sel.anchorNode?.parentElement?.closest('td[data-cell-address]') ?? null
+      const focusCell = sel.focusNode?.parentElement?.closest('td[data-cell-address]') ?? null
+      if (!anchorCell || anchorCell !== focusCell) return
+
+      const cellAddress = anchorCell.dataset.cellAddress
+      const fullCellText = anchorCell.textContent.trim()
+      const surroundingContext = getXlsxContext(anchorCell)
+      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      await openSuggestion(selectedText, surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
     }
-
-    const allParas = Array.from(viewerRef.current.querySelectorAll('p'))
-    const paragraphIndex = allParas.indexOf(anchorPara)
-
-    const docText = viewerRef.current.textContent
-    const selIdx = docText.indexOf(selectedText)
-    const before = selIdx > 0 ? docText.slice(Math.max(0, selIdx - 100), selIdx) : ''
-    const after = docText.slice(selIdx + selectedText.length, selIdx + selectedText.length + 100)
-    const surroundingContext = before + selectedText + after
-
-    const rect = sel.getRangeAt(0).getBoundingClientRect()
-    await openSuggestion(selectedText, surroundingContext, { selectedText, paragraphIndex }, { top: rect.bottom + 8, left: rect.left })
   }, [format, openSuggestion])
 
   const handleClick = useCallback(async e => {
     if (format !== 'xlsx') return
     const td = e.target.closest('td[data-cell-address]')
     if (!td) return
-    const cellAddress = td.dataset.cellAddress
-    const selectedText = td.textContent.trim()
+    const sel = window.getSelection()
+    if (sel && !sel.isCollapsed) return
 
-    if (/^\{\{.+\}\}$/.test(selectedText)) {
-      setPopover({ state: 'ready', fieldName: '', errorMsg: 'This cell is already a field', position: { top: 80, left: 50 } })
+    const cellAddress = td.dataset.cellAddress
+    const fullCellText = td.textContent.trim()
+
+    if (/^\{\{.+\}\}$/.test(fullCellText)) {
+      setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: 'This cell is already a field', position: { top: 80, left: 50 } })
       return
     }
 
     const surroundingContext = getXlsxContext(td)
     const rect = td.getBoundingClientRect()
-    await openSuggestion(selectedText, surroundingContext, { cellAddress, selectedText }, { top: rect.bottom + 8, left: rect.left })
+    await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
   }, [format, openSuggestion])
 
   const handleAccept = async () => {
@@ -164,7 +184,9 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         result = insertDocx(binary, selectedText, paragraphIndex, fieldName)
       } else {
         const { cellAddress } = pendingRef.current
-        result = insertXlsx(binary, cellAddress, fieldName)
+        const pattern = (popover.label ?? '') + `{{${fieldName}}}`
+        result = insertXlsx(binary, cellAddress, fieldName, pattern)
+        // Note: renderXlsx is synchronous — no await needed below
       }
 
       if (result.error) {
@@ -245,12 +267,19 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         <p className="text-xs text-red-400 text-center px-3 py-1">{saveError}</p>
       )}
 
+      {format === 'xlsx' && (
+        <div className="px-3 py-2 text-xs text-gray-400 bg-gray-800/40 border-b border-gray-700 shrink-0">
+          <span className="font-medium text-gray-300">Click</span> a cell — AI will identify the label and value.
+          <span className="font-medium text-gray-300"> Select text</span> to hint which part is the value.
+        </div>
+      )}
+
       {/* Document viewer */}
       <div className="relative flex-1 overflow-hidden">
         <div
           data-testid="doc-viewer"
           ref={viewerRef}
-          className="h-full overflow-y-auto p-3 text-sm text-gray-200 leading-relaxed"
+          className={`h-full overflow-y-auto p-3 text-sm text-gray-200 leading-relaxed${format === 'xlsx' ? ' [&_table]:border-collapse [&_table]:w-full [&_table]:text-xs [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-gray-400 [&_h3]:uppercase [&_h3]:tracking-wide [&_h3]:mt-3 [&_h3]:mb-1 [&_td]:border [&_td]:border-gray-600 [&_td]:px-2 [&_td]:py-1.5 [&_td[data-cell-address]]:cursor-pointer [&_td[data-cell-address]:hover]:bg-blue-900/25 [&_td[data-cell-address]:hover]:transition-colors' : ''}`}
           onMouseUp={handleMouseUp}
           onClick={handleClick}
         />
@@ -277,6 +306,20 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
               </div>
             ) : (
               <>
+                {format === 'xlsx' && (
+                  <>
+                    <label className="text-xs text-gray-400 block mb-1">
+                      Label (preserved)
+                    </label>
+                    <input
+                      value={popover.label ?? ''}
+                      onChange={e => setPopover(prev => ({ ...prev, label: e.target.value, errorMsg: '' }))}
+                      onKeyDown={e => { if (e.key === 'Escape') setPopover(null) }}
+                      placeholder="e.g. Name: "
+                      className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500 mb-2"
+                    />
+                  </>
+                )}
                 <label htmlFor="field-name-input" className="text-xs text-gray-400 block mb-1">
                   Field name
                 </label>
@@ -288,6 +331,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
                   onKeyDown={e => { if (e.key === 'Enter') handleAccept(); if (e.key === 'Escape') setPopover(null) }}
                   className="w-full bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500 mb-2"
                 />
+                {format === 'xlsx' && (popover.label || popover.fieldName) && (
+                  <p className="text-xs text-gray-500 mb-2 font-mono">
+                    {popover.label ?? ''}<span className="text-blue-400">{`{{${popover.fieldName || '…'}}}`}</span>
+                  </p>
+                )}
                 {popover.errorMsg && (
                   <p className="text-xs text-red-400 mb-2">{popover.errorMsg}</p>
                 )}
