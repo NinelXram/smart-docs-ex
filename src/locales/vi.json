@@ -67,7 +67,10 @@
     "generating": "Đang tạo…",
     "fieldPlaceholder": "Nhập",
     "errorNotFound": "Không tìm thấy tệp mẫu — vui lòng tải lên lại",
-    "errorFailed": "Tạo tệp thất bại:"
+    "errorFailed": "Tạo tệp thất bại:",
+    "analyze": "Phân tích",
+    "analyzing": "Đang phân tích…",
+    "analyzeError": "Phân tích thất bại:"
   },
   "progressBar": {
     "upload": "Tải lên",

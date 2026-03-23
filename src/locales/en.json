@@ -67,7 +67,10 @@
     "generating": "Generating…",
     "fieldPlaceholder": "Enter",
     "errorNotFound": "Template file not found — please re-upload",
-    "errorFailed": "Generation failed:"
+    "errorFailed": "Generation failed:",
+    "analyze": "Analyze",
+    "analyzing": "Analyzing…",
+    "analyzeError": "Analysis failed:"
   },
   "progressBar": {
     "upload": "Upload",
