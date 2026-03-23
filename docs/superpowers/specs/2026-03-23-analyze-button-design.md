@@ -32,9 +32,23 @@ Input accept string: `image/*,.pdf,.docx,.txt`
 
 ## File Picker UX
 
-- **Click** Analyze → opens native file picker
-- **Drag-and-drop** onto the Analyze button → triggers the same handler
-- Implemented via a hidden `<input type="file">` + `onDragOver`/`onDrop` on the button element
+- **Click** Analyze → calls `fileInputRef.current.click()` via a `useRef` on the hidden input
+- **Drag-and-drop** onto the Analyze button → `onDragOver` prevents default, `onDrop` reads `e.dataTransfer.files[0]`
+- Both paths call the same `handleAnalyze(file)` handler
+- No drag-over visual styling is required on the button
+- `handleAnalyze` returns early if `analyzing` is already `true` (prevents concurrent in-flight calls)
+
+---
+
+## API Key
+
+`Generate.jsx` calls `getApiKey()` from `src/lib/storage.js` at the start of `handleAnalyze`. If the key is null, it shows the `analyzeError` toast immediately without calling `analyzeSource`. The `apiKey` is **not** added as a prop to `Generate` — it is retrieved internally, consistent with how `Review.jsx` retrieves it.
+
+---
+
+## Language
+
+`handleAnalyze` reads `lang` from `useLanguage()` (already used in the component for `t`) and passes it into `analyzeSource`.
 
 ---
 
@@ -43,25 +57,77 @@ Input accept string: `image/*,.pdf,.docx,.txt`
 ```
 User clicks Analyze / drops file
   ↓
-hidden <input type="file"> triggers
+handleAnalyze(file)  ← same function for click and drag-drop
+  [return early if analyzing === true]
+  ↓
+getApiKey() from storage  [toast + return if null]
+  ↓
+setAnalyzing(true)
   ↓
 analyzeSource(apiKey, file, fields, lang)
-  ├─ image/* or .pdf  → FileReader.readAsArrayBuffer() → base64
-  │                   → Gemini inlineData (multimodal) + field-extraction prompt
-  ├─ .docx            → mammoth.extractRawText() → string
-  │                   → Gemini text prompt
-  └─ .txt             → FileReader.readAsText() → string
-                      → Gemini text prompt
+  ├─ image/* or application/pdf
+  │   [throw if file.size > 4 MB]
+  │   → chunked base64 encoding (see below)
+  │   → model.generateContent([
+  │       { inlineData: { mimeType: file.type, data: base64 } },
+  │       { text: prompt }
+  │     ])
+  ├─ .docx
+  │   → mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
+  │   → .value  [throw if > MAX_CHARS]
+  │   → model.generateContent(prompt + '\n\n' + text)
+  └─ .txt
+      → FileReader.readAsText(file)  [throw if > MAX_CHARS]
+      → model.generateContent(prompt + '\n\n' + text)
   ↓
-Gemini returns JSON: { "fieldName": "value", ... }
+Strip markdown fences, JSON.parse (retry once with stricter prompt on failure)
   ↓
-Filter to only known template fields (guard against hallucinated keys)
+Filter to only keys present in fields[] (guard against hallucinated keys)
+A Gemini response of {} and a response where all keys are filtered out are
+treated identically — both result in setValues being called with an empty spread.
+No special zero-match branch is needed.
   ↓
 setValues(prev => ({ ...prev, ...matched }))
+  ↓
+setAnalyzing(false)
 ```
 
-Gemini prompt:
-> "These are the template field names: [name, jobTitle, date]. Extract matching values from the document. Return JSON only: `{"fieldName": "value"}`. Only include fields you are confident about."
+### Full Gemini prompt
+
+```
+These are the template field names: [fieldA, fieldB, fieldC].
+Extract matching values from the document.
+Return JSON only: {"fieldName": "value", ...}.
+Only include fields you are confident about.
+<appended if lang === 'vi': "\nRespond in Vietnamese.">
+```
+
+### JSON parsing
+
+Follow the same pattern as all existing `gemini.js` functions:
+
+```js
+const cleaned = raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
+const parsed = JSON.parse(cleaned)
+```
+
+Retry once on failure with `'\n\nCRITICAL: respond with valid JSON only.'` appended to the prompt (same pattern as `extractVariables`). Throw on second failure.
+
+### Chunked base64 encoding
+
+Use the chunked loop to avoid call stack overflow on large files:
+
+```js
+const bytes = new Uint8Array(arrayBuffer)
+let binary = ''
+const chunkSize = 8192
+for (let i = 0; i < bytes.length; i += chunkSize) {
+  binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+}
+const base64 = btoa(binary)
+```
+
+Do **not** use `btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))` — the spread operator hits the call stack limit for files larger than ~250 KB.
 
 ---
 
@@ -69,7 +135,7 @@ Gemini prompt:
 
 - Fields Gemini matched: auto-populated
 - Fields Gemini did not match: left empty, user fills manually
-- No feedback message — silent fill
+- **Zero matches**: silent no-op — `setValues` is still called, spread of `{}` changes nothing. No toast. Deliberate: the user sees immediately that no fields changed and can try a different file.
 
 ---
 
@@ -78,9 +144,19 @@ Gemini prompt:
 | File | Change |
 |------|--------|
 | `src/lib/gemini.js` | Add `analyzeSource(apiKey, file, fields, lang)` |
-| `src/pages/Generate.jsx` | Add Analyze button, hidden file input, drag-drop handlers, `analyzing` state |
+| `src/pages/Generate.jsx` | Add Analyze button, `fileInputRef`, drag-drop handlers, `analyzing` state, `handleAnalyze` |
 | `src/locales/en.json` | Add `generate.analyze`, `generate.analyzing`, `generate.analyzeError` |
 | `src/locales/vi.json` | Same keys in Vietnamese |
+
+Note: `generate.analyzing` is a new key under the `generate` namespace — do not reuse `review.analyzing`.
+
+### i18n string values
+
+| Key | English | Vietnamese |
+|-----|---------|------------|
+| `generate.analyze` | `"Analyze"` | `"Phân tích"` |
+| `generate.analyzing` | `"Analyzing…"` | `"Đang phân tích…"` |
+| `generate.analyzeError` | `"Analysis failed:"` | `"Phân tích thất bại:"` |
 
 ---
 
@@ -88,7 +164,9 @@ Gemini prompt:
 
 ```js
 /**
- * Upload a file to Gemini and extract values for known template fields.
+ * Read a file and ask Gemini to extract values for known template fields.
+ * Binary files (images, PDF) are sent via inlineData multimodal call.
+ * Text files (DOCX, TXT) are extracted to string and sent as a text prompt.
  * @param {string} apiKey
  * @param {File} file
  * @param {string[]} fields - known template field names
@@ -98,23 +176,21 @@ Gemini prompt:
 export async function analyzeSource(apiKey, file, fields, lang = 'vi')
 ```
 
-**Binary path** (image/*, .pdf): reads as ArrayBuffer → base64 → Gemini `inlineData` multimodal call.
-
-**Text path** (.docx, .txt): extracts raw text → Gemini text-only call. DOCX uses `mammoth.extractRawText()`.
-
-File size limit: **4 MB** for binary path. Throws if exceeded (caller shows toast).
-
 ---
 
 ## Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
-| File > 4 MB | Throw before API call → `analyzeError` toast |
-| No API key | Throw early → `analyzeError` toast |
-| Gemini API error | Catch → `analyzeError` toast, fields unchanged |
-| Malformed JSON response | Catch → `analyzeError` toast, fields unchanged |
-| No fields matched | Silent no-op, fields stay empty |
+| `analyzing` already true | Return early (no toast) |
+| No API key (`getApiKey()` returns null) | Toast `analyzeError`, return (no API call) |
+| File > 4 MB (binary path) | `analyzeSource` throws → toast `analyzeError` |
+| Text > MAX_CHARS (text path) | `analyzeSource` throws → toast `analyzeError` |
+| Gemini API error | Catch → toast `analyzeError`, fields unchanged |
+| Malformed JSON (after retry) | Catch → toast `analyzeError`, fields unchanged |
+| No fields matched / empty result | Silent no-op |
+
+Toast format matches existing error toasts: `{ message: \`${t('generate.analyzeError')} ${err.message}\`, type: 'error' }`.
 
 ---
 
@@ -127,6 +203,18 @@ File size limit: **4 MB** for binary path. Throws if exceeded (caller shows toas
 
 ## Tests (Generate.test.jsx)
 
-1. Mock `analyzeSource` returns `{ fullName: 'Jane' }` → assert input updates to "Jane"
-2. Mock `analyzeSource` throws → assert `onToast` called with error
-3. File drag-drop triggers same handler as click (same code path)
+All tests require two mocks from `../lib/storage.js`:
+- `getTemplateBinary` resolves (keeps the component in ready state)
+- `getApiKey` resolves with a fake key string (unless a test specifically tests the null-key path)
+
+Use `vi.mock('../lib/storage.js', ...)` at the top of the describe block.
+
+1. **Happy path — matched fields**: mock `analyzeSource` resolves `{ fullName: 'Jane' }` → simulate file input `change` event → `waitFor` → assert `fullName` input value is `'Jane'`
+
+2. **API error**: mock `analyzeSource` throws `new Error('oops')` → simulate file input `change` → `waitFor` → assert `onToast` called with `{ type: 'error', message: expect.stringContaining('oops') }`
+
+3. **No API key**: mock `getApiKey` returns `null` → simulate Analyze button click → `waitFor` → assert `onToast` called with `{ type: 'error' }` and `analyzeSource` is never called
+
+4. **File too large**: mock `analyzeSource` to throw `new Error('too large')` (the size check is inside `analyzeSource`) → simulate file input `change` with any File → assert `onToast` called with error. This tests the component's error-handling path; the internal size logic is unit-tested in `gemini.test.js`.
+
+5. **Drag-drop fills fields**: simulate `drop` event on the Analyze button (with a mock `dataTransfer.files[0]`), mock `analyzeSource` resolves `{ jobTitle: 'Engineer' }` → `waitFor` → assert `jobTitle` input value is `'Engineer'`
