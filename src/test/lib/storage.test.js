@@ -7,6 +7,7 @@ import {
   getTemplates,
   getTemplateBinary,
   deleteTemplate,
+  migrateFromChromeStorage,
 } from '../../lib/storage.js'
 
 // Binary helper — 4-byte ArrayBuffer
@@ -114,5 +115,53 @@ describe('deleteTemplate', () => {
     await saveTemplate({ ...META, binary: makeBuffer() })
     await deleteTemplate(META.id)
     await expect(getTemplateBinary(META.id)).rejects.toThrow()
+  })
+})
+
+describe('migrateFromChromeStorage', () => {
+  it('migrates legacy base64 templates to OPFS', async () => {
+    // Arrange: put a base64-encoded template in chrome.storage mock
+    const bytes = new Uint8Array([9, 8, 7])
+    const base64 = btoa(String.fromCharCode(...bytes))
+    const legacy = [{ id: 'legacy-1', name: 'Old', sourceFormat: 'xlsx', binary: base64, fields: ['X'], createdAt: 1 }]
+    await chrome.storage.local.set({ templates: legacy })
+
+    // Act
+    await migrateFromChromeStorage()
+
+    // Assert: template is now in OPFS
+    const list = await getTemplates()
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe('legacy-1')
+
+    // Assert: binary is retrievable
+    const bin = await getTemplateBinary('legacy-1')
+    expect(new Uint8Array(bin)).toEqual(bytes)
+
+    // Assert: chrome.storage.local templates key is removed
+    const stored = await chrome.storage.local.get(['templates'])
+    expect(stored.templates).toBeUndefined()
+  })
+
+  it('is idempotent — does not duplicate if run twice', async () => {
+    const base64 = btoa(String.fromCharCode(1, 2))
+    await chrome.storage.local.set({
+      templates: [{ id: 'dup-1', name: 'D', sourceFormat: 'docx', binary: base64, fields: [], createdAt: 1 }],
+    })
+    await migrateFromChromeStorage()
+    await migrateFromChromeStorage() // run twice
+    expect(await getTemplates()).toHaveLength(1)
+  })
+
+  it('skips corrupt entries and continues', async () => {
+    await chrome.storage.local.set({
+      templates: [
+        { id: 'bad', name: 'Bad', sourceFormat: 'docx', binary: '!!!not-base64!!!', fields: [], createdAt: 1 },
+        { id: 'good', name: 'Good', sourceFormat: 'docx', binary: btoa('x'), fields: [], createdAt: 2 },
+      ],
+    })
+    await migrateFromChromeStorage()
+    const list = await getTemplates()
+    expect(list.map(t => t.id)).toContain('good')
   })
 })
