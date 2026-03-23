@@ -47,7 +47,7 @@ opfs://templates/
 - `deleteTemplate(id)` — removes `{id}.bin`, `{id}.meta.json`, and removes the ID from `index.json`. See delete sequence below.
 - `getApiKey()` / `saveApiKey()` — unchanged, still use `chrome.storage.local`.
 
-**OPFS availability check:** `storage.js` calls `navigator.storage.getDirectory()` once at module initialisation. If it throws (unavailable environment), the module re-throws with a clear message. `App.jsx` catches this during its `getApiKey()` startup sequence, sets an `opfsError` state, and renders a full-screen error message: _"This extension requires a browser with file system support. Please update Chrome."_ The app is blocked — no graceful fallback to chrome.storage (which cannot handle large binaries reliably).
+**OPFS availability check:** `storage.js` exports a `checkOpfsAvailable(): Promise<void>` function that calls `navigator.storage.getDirectory()` and throws a descriptive error if unavailable. `App.jsx` adds a dedicated `useEffect` (separate from the existing `getApiKey()` effect) that calls `checkOpfsAvailable()` on mount and sets an `opfsError` boolean state if it rejects. When `opfsError` is true, `App.jsx` renders a full-screen error: _"This extension requires a browser with file system support. Please update Chrome."_ The existing `getApiKey()` catch path (which navigates to step 0) is not affected. The app is blocked when OPFS is unavailable — no graceful fallback to chrome.storage (which cannot handle large binaries reliably).
 
 **index.json write strategy:** All operations that modify `index.json` use a read-modify-write of the entire file via `FileSystemFileHandle.createWritable({ keepExistingData: false })`. This is a single-user extension with no concurrency. If the write fails, the error is surfaced as a toast and the in-memory state is not updated (leave-on-failure).
 
@@ -96,12 +96,15 @@ Strips images, drawings, themes, fonts.
 **`generateXlsx` — after (PizZip surgery):**
 ```
 PizZip(binary)
-  → for each worksheet XML:
-      → scan cells with t="s": look up value in sharedStrings.xml; if exact match {{fieldName}}, replace the <t> text
-      → scan cells with t="inlineStr": check <is><t> text; if exact match {{fieldName}}, replace in-place
-  → update sharedStrings.xml with replaced values
+  → enumerate sheet paths by walking xl/_rels/workbook.xml.rels (same approach as insertXlsx)
+  → for each worksheet XML (in workbook order):
+      → scan cells with t="s": resolve index into sharedStrings.xml; if <t> text is exact match {{fieldName}}, replace the <t> text in sharedStrings
+      → scan cells with t="inlineStr": check <is><t> text; if exact match {{fieldName}}, replace in-place in sheet XML
+  → write updated sharedStrings.xml back to zip
   → zip.generate({ type: 'blob' })
 ```
+
+`index.json` bootstrap: if `index.json` does not exist yet (first ever save), treat as an empty array `[]`.
 
 **Token matching:** Exact whole-cell match only — the cell value must be exactly `{{fieldName}}` (matching current behaviour in the old `generateXlsx`). Cells containing mixed text like `Hello {{name}}` are not supported and are left untouched.
 
@@ -122,16 +125,21 @@ export async function saveFile(blob, suggestedName, format) {
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   }
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({
-      suggestedName,
-      types: [{
-        description: format.toUpperCase() + ' Document',
-        accept: { [mimeMap[format]]: ['.' + format] },
-      }],
-    })
-    const writable = await handle.createWritable()
-    await writable.write(blob)
-    await writable.close()
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{
+          description: format.toUpperCase() + ' Document',
+          accept: { [mimeMap[format]]: ['.' + format] },
+        }],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+    } catch (err) {
+      if (err.name === 'AbortError') return  // user cancelled — silent no-op
+      throw err  // all other errors propagate to the caller
+    }
   } else {
     // Fallback for environments where showSaveFilePicker is unavailable
     downloadBlob(blob, suggestedName)
@@ -141,7 +149,9 @@ export async function saveFile(blob, suggestedName, format) {
 
 `suggestedName` is `${template.name}.${template.sourceFormat}` (same naming as current `downloadBlob` call in `Generate.jsx`).
 
-`downloadBlob` is kept as a private fallback helper (not exported). If the user cancels the Save As dialog (`AbortError`), the error is caught silently — no toast, no error state.
+`downloadBlob` is kept as a private fallback helper (not exported). `AbortError` is caught inside `saveFile` itself — callers never see it. All other errors propagate to the caller (Generate.jsx shows a toast).
+
+**Generate.jsx on binary load failure:** if `getTemplateBinary(id)` rejects on mount, the Generate button is disabled and a toast is shown: _"Template file not found — please re-upload."_ The user must go back to Library and re-upload the template.
 
 ---
 
@@ -189,11 +199,13 @@ Generate
 
 | File | Change |
 |------|--------|
-| `src/lib/storage.js` | Full rewrite — OPFS reads/writes; `getTemplateBinary(id)`; one-time migration from chrome.storage |
+| `src/lib/storage.js` | Full rewrite — OPFS reads/writes; `checkOpfsAvailable()`; `getTemplateBinary(id)`; one-time migration from chrome.storage |
 | `src/lib/templateEngine.js` | `generateXlsx` rewritten with PizZip surgery; `downloadBlob` → `saveFile` (exported); `downloadBlob` kept as private fallback |
+| `src/pages/App.jsx` | Add `opfsError` state; new `useEffect` calling `checkOpfsAvailable()` on mount; full-screen error render when blocked |
 | `src/pages/Review.jsx` | Remove `encodeBase64` call; pass raw `ArrayBuffer` to `saveTemplate` |
-| `src/pages/Generate.jsx` | Call `getTemplateBinary(id)` on mount; remove `decodeBase64`; call `saveFile` |
-| `src/test/setup.js` | Add OPFS mock (in-memory Map-based implementation of `navigator.storage.getDirectory`) |
+| `src/pages/Generate.jsx` | Call `getTemplateBinary(id)` on mount; remove `decodeBase64`; disable Generate button on load failure; call `saveFile` |
+| `src/pages/Library.jsx` | Fix `tpl.variables` → `tpl.fields` (pre-existing bug exposed by this change) |
+| `src/test/setup.js` | Add OPFS mock (in-memory Map-based; stubs: `getDirectoryHandle`, `getFileHandle`, `getFile`, `createWritable`, `write`, `close`, `removeEntry`; reset per test) |
 | `src/test/` | Update storage tests for OPFS; add/update tests for `generateXlsx` and `saveFile` |
 
 No changes to `manifest.json` — OPFS and `showSaveFilePicker` require no extra MV3 permissions.
@@ -205,7 +217,7 @@ No changes to `manifest.json` — OPFS and `showSaveFilePicker` require no extra
 jsdom does not implement the File System Access API. The test suite mocks `navigator.storage.getDirectory()` in `src/test/setup.js` with an in-memory implementation:
 
 - A `Map<string, Uint8Array | string>` keyed by file path simulates the OPFS directory tree.
-- `getFile()`, `createWritable()`, `write()`, `close()`, `getFileHandle()`, `removeEntry()` are stubbed to operate on that Map.
+- `getDirectoryHandle()`, `getFileHandle()`, `getFile()`, `createWritable()`, `write()`, `close()`, `removeEntry()` are stubbed to operate on that Map.
 - The mock is reset between tests via `beforeEach`.
 
 This pattern is consistent with the existing `chrome.storage.local` mock in `setup.js`.
