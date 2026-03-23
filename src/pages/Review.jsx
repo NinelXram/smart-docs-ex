@@ -224,6 +224,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
   }, [format, openSuggestion])
 
+  const handleTabClick = useCallback((name) => {
+    tabSwitchRef.current = true  // mark as tab switch so effect resets scroll
+    setCurrentSheet(name)
+  }, [])
+
   const handleAccept = async () => {
     const fieldName = popover.fieldName.trim()
     if (!fieldName) {
@@ -334,6 +339,25 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         <div className="px-3 py-2 text-xs text-gray-400 bg-gray-800/40 border-b border-gray-700 shrink-0">
           <span className="font-medium text-gray-300">Click</span> a cell — AI will identify the label and value.
           <span className="font-medium text-gray-300"> Select text</span> to hint which part is the value.
+        </div>
+      )}
+
+      {/* Sheet tab bar — only for xlsx workbooks with more than one sheet */}
+      {format === 'xlsx' && sheets.length > 1 && (
+        <div className="flex overflow-x-auto whitespace-nowrap border-b border-gray-700 shrink-0 bg-gray-900">
+          {sheets.map(sheet => (
+            <button
+              key={sheet.name}
+              onClick={() => handleTabClick(sheet.name)}
+              className={`px-4 py-2 text-xs border-t-2 transition-colors ${
+                sheet.name === currentSheet
+                  ? 'border-blue-500 text-white bg-gray-800'
+                  : 'border-transparent text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              {sheet.name}
+            </button>
+          ))}
         </div>
       )}
 
