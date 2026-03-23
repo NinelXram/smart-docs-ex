@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
+import { useLanguage } from '../lib/i18n.jsx'
 
 export default function FileDropZone({ onFile, accept }) {
   const inputRef = useRef(null)
   const [dragOver, setDragOver] = useState(false)
+  const { t } = useLanguage()
 
   const handleDrop = e => {
     e.preventDefault()
@@ -28,8 +30,8 @@ export default function FileDropZone({ onFile, accept }) {
       }`}
     >
       <span className="text-2xl">📄</span>
-      <span className="text-sm text-gray-300">Drop a file or click to browse</span>
-      <span className="text-xs text-gray-500">Accepted: PDF, DOCX, XLSX</span>
+      <span className="text-sm text-gray-300">{t('upload.dropzoneLabel')}</span>
+      <span className="text-xs text-gray-500">{t('upload.dropzoneAccepted')}</span>
       <input
         data-testid="file-input"
         ref={inputRef}
