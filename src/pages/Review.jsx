@@ -344,9 +344,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
       {/* Sheet tab bar — only for xlsx workbooks with more than one sheet */}
       {format === 'xlsx' && sheets.length > 1 && (
-        <div className="flex overflow-x-auto whitespace-nowrap border-b border-gray-700 shrink-0 bg-gray-900">
+        <div role="tablist" aria-label="Worksheet tabs" className="flex overflow-x-auto whitespace-nowrap border-b border-gray-700 shrink-0 bg-gray-900">
           {sheets.map(sheet => (
             <button
+              role="tab"
+              aria-selected={sheet.name === currentSheet}
               key={sheet.name}
               onClick={() => handleTabClick(sheet.name)}
               className={`px-4 py-2 text-xs border-t-2 transition-colors ${
