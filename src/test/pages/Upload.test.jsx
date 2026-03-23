@@ -12,6 +12,7 @@ vi.mock('../../components/FileDropZone.jsx', () => ({
 
 import Upload from '../../pages/Upload.jsx'
 import * as renderers from '../../lib/renderers/index.js'
+import { LanguageProvider } from '../../lib/i18n.jsx'
 
 const RENDER_RESULT = {
   html: '<p>Hello</p>',
@@ -78,5 +79,29 @@ describe('Upload', () => {
     fireEvent.click(screen.getByRole('button', { name: 'select file' }))
     await waitFor(() => expect(renderers.renderFile).toHaveBeenCalled())
     // No gemini import means no extractVariables call — this test passing confirms it
+  })
+})
+
+describe('Upload — Vietnamese', () => {
+  function renderVi(ui) {
+    return render(
+      <LanguageProvider lang="vi" setLang={vi.fn()}>
+        {ui}
+      </LanguageProvider>
+    )
+  }
+
+  it('shows Vietnamese title', () => {
+    renderVi(<Upload onScan={vi.fn()} onToast={vi.fn()} />)
+    expect(screen.getByText('Tải lên tài liệu')).toBeInTheDocument()
+  })
+
+  it('shows Vietnamese rendering text while loading', async () => {
+    renderers.renderFile.mockReturnValue(new Promise(() => {}))
+    renderVi(<Upload onScan={vi.fn()} onToast={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'select file' }))
+    await waitFor(() =>
+      expect(screen.getByText('Đang xử lý tài liệu…')).toBeInTheDocument()
+    )
   })
 })

@@ -7,6 +7,7 @@ vi.mock('../../lib/storage.js', () => ({ saveApiKey: vi.fn() }))
 import Onboarding from '../../pages/Onboarding.jsx'
 import * as gemini from '../../lib/gemini.js'
 import * as storage from '../../lib/storage.js'
+import { LanguageProvider } from '../../lib/i18n.jsx'
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -67,5 +68,33 @@ describe('Onboarding', () => {
   it('submit button is disabled when key input is empty', () => {
     render(<Onboarding onSuccess={vi.fn()} />)
     expect(screen.getByRole('button', { name: /test connection/i })).toBeDisabled()
+  })
+})
+
+describe('Onboarding — Vietnamese', () => {
+  function renderVi(ui) {
+    return render(
+      <LanguageProvider lang="vi" setLang={vi.fn()}>
+        {ui}
+      </LanguageProvider>
+    )
+  }
+
+  it('shows Vietnamese submit button', () => {
+    renderVi(<Onboarding onSuccess={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /kiểm tra kết nối/i })).toBeInTheDocument()
+  })
+
+  it('shows Vietnamese placeholder', () => {
+    renderVi(<Onboarding onSuccess={vi.fn()} />)
+    expect(screen.getByPlaceholderText(/api key/i)).toBeInTheDocument()
+  })
+
+  it('shows Vietnamese submitting state', async () => {
+    gemini.testConnection.mockReturnValue(new Promise(() => {}))
+    renderVi(<Onboarding onSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByPlaceholderText(/api key/i), { target: { value: 'key' } })
+    fireEvent.click(screen.getByRole('button', { name: /kiểm tra kết nối/i }))
+    expect(screen.getByRole('button', { name: /đang kiểm tra/i })).toBeDisabled()
   })
 })

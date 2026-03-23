@@ -8,6 +8,7 @@ vi.mock('../../lib/storage.js', () => ({
 
 import Library from '../../pages/Library.jsx'
 import * as storage from '../../lib/storage.js'
+import { LanguageProvider } from '../../lib/i18n.jsx'
 
 const TEMPLATES = [
   {
@@ -95,5 +96,41 @@ describe('Library', () => {
     await waitFor(() =>
       expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
     )
+  })
+})
+
+describe('Library — Vietnamese', () => {
+  function renderVi(ui) {
+    const [lang, setLang] = [{ current: 'vi' }, vi.fn()]
+    return render(
+      <LanguageProvider lang="vi" setLang={vi.fn()}>
+        {ui}
+      </LanguageProvider>
+    )
+  }
+
+  it('shows Vietnamese empty state text', async () => {
+    storage.getTemplates.mockResolvedValue([])
+    renderVi(<Library onSelect={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getByText('Chưa có mẫu nào được lưu.')).toBeInTheDocument()
+    )
+  })
+
+  it('shows Vietnamese new template button', async () => {
+    storage.getTemplates.mockResolvedValue([])
+    renderVi(<Library onSelect={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getByText('+ Mẫu mới')).toBeInTheDocument()
+    )
+  })
+
+  it('shows Vietnamese variable count', async () => {
+    storage.getTemplates.mockResolvedValue(TEMPLATES)
+    renderVi(<Library onSelect={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => {
+      // "2 biến" for 2 fields
+      expect(screen.getByText('2 biến')).toBeInTheDocument()
+    })
   })
 })
