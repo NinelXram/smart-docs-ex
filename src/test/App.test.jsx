@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
-vi.mock('../lib/storage.js', () => ({ getApiKey: vi.fn() }))
+vi.mock('../lib/storage.js', () => ({ getApiKey: vi.fn(), checkOpfsAvailable: vi.fn() }))
 vi.mock('../pages/Onboarding.jsx', () => ({
   default: ({ onSuccess }) => (
     <div data-testid="onboarding">
@@ -21,7 +21,10 @@ vi.mock('../components/Toast.jsx', () => ({ default: () => null }))
 import App from '../App.jsx'
 import * as storage from '../lib/storage.js'
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  storage.checkOpfsAvailable.mockResolvedValue(undefined)
+})
 
 describe('App', () => {
   it('shows loading initially', () => {
@@ -62,5 +65,20 @@ describe('App', () => {
     await waitFor(() => screen.getByTestId('upload'))
     fireEvent.click(screen.getByRole('button', { name: /library/i }))
     expect(screen.getByTestId('library')).toBeInTheDocument()
+  })
+
+  it('renders normally when checkOpfsAvailable resolves', async () => {
+    storage.getApiKey.mockResolvedValue('my-key')
+    storage.checkOpfsAvailable.mockResolvedValue(undefined)
+    render(<App />)
+    await waitFor(() => expect(screen.getByTestId('upload')).toBeInTheDocument())
+    expect(screen.queryByTestId('opfs-error')).not.toBeInTheDocument()
+  })
+
+  it('shows full-screen OPFS error when checkOpfsAvailable rejects', async () => {
+    storage.getApiKey.mockResolvedValue('my-key')
+    storage.checkOpfsAvailable.mockRejectedValue(new Error('OPFS not supported'))
+    render(<App />)
+    await waitFor(() => expect(screen.getByTestId('opfs-error')).toBeInTheDocument())
   })
 })

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getApiKey } from './lib/storage.js'
+import { getApiKey, checkOpfsAvailable } from './lib/storage.js'
 import ProgressBar from './components/ProgressBar.jsx'
 import Toast from './components/Toast.jsx'
 import Onboarding from './pages/Onboarding.jsx'
@@ -14,6 +14,7 @@ export default function App() {
   const [scanData, setScanData] = useState(null)
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [toast, setToast] = useState(null)
+  const [opfsError, setOpfsError] = useState(false)
 
   useEffect(() => {
     getApiKey()
@@ -23,6 +24,21 @@ export default function App() {
       })
       .catch(() => setStep(0))
   }, [])
+
+  useEffect(() => {
+    checkOpfsAvailable().catch(() => setOpfsError(true))
+  }, [])
+
+  if (opfsError) {
+    return (
+      <div
+        data-testid="opfs-error"
+        className="flex items-center justify-center h-screen bg-gray-900 text-white text-sm"
+      >
+        This extension requires a browser with file system support. Please update Chrome.
+      </div>
+    )
+  }
 
   if (step === null) {
     return (
