@@ -171,7 +171,7 @@ export function insertXlsx(binary, cellAddress, fieldName) {
   const sheetEls = Array.from(wbDoc.getElementsByTagName('sheet'))
   const sheetEl = sheetEls.find(el => el.getAttribute('name') === sheetName)
   if (!sheetEl) return { error: 'sheet_not_found' }
-  const rId = sheetEl.getAttribute('r:id')
+  const rId = sheetEl.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')
 
   // Step 2: Resolve sheet file path via rels
   let sheetPath = null
@@ -210,29 +210,23 @@ export function insertXlsx(binary, cellAddress, fieldName) {
   const ssXml = zip.files[ssPath]?.asText()
 
   if (ssXml) {
-    // Use shared strings: append new entry
+    // Parse sheet to count existing si elements (to get new index)
     const ssDoc = parser.parseFromString(ssXml, 'application/xml')
-    const sstEl = ssDoc.documentElement
-
-    // Count current entries to get new index
     const siEls = Array.from(ssDoc.getElementsByTagNameNS(ns, 'si'))
     const newIndex = siEls.length
 
-    // Append new <si><t>{{fieldName}}</t></si>
-    const newSi = ssDoc.createElementNS(ns, 'si')
-    const newT = ssDoc.createElementNS(ns, 't')
-    newT.textContent = `{{${fieldName}}}`
-    newSi.appendChild(newT)
-    sstEl.appendChild(newSi)
+    // String-based append to avoid XMLSerializer namespace redundancy
+    const newSiXml = `<si><t>{{${fieldName}}}</t></si>`
+    const closingTag = '</sst>'
+    const insertPos = ssXml.lastIndexOf(closingTag)
+    if (insertPos === -1) return { error: 'corrupt_shared_strings' }
+    let updatedSsXml = ssXml.slice(0, insertPos) + newSiXml + ssXml.slice(insertPos)
+    updatedSsXml = updatedSsXml
+      .replace(/\bcount="(\d+)"/, (_, n) => `count="${parseInt(n, 10) + 1}"`)
+      .replace(/\buniqueCount="(\d+)"/, (_, n) => `uniqueCount="${parseInt(n, 10) + 1}"`)
+    zip.file(ssPath, updatedSsXml)
 
-    // Update count and uniqueCount attributes
-    const count = parseInt(sstEl.getAttribute('count') ?? '0', 10)
-    const uniqueCount = parseInt(sstEl.getAttribute('uniqueCount') ?? '0', 10)
-    sstEl.setAttribute('count', String(count + 1))
-    sstEl.setAttribute('uniqueCount', String(uniqueCount + 1))
-
-    // Update the cell to reference the new shared string
-    // Remove all child elements from the cell
+    // Update the cell in the sheet XML
     while (targetCell.firstChild) targetCell.removeChild(targetCell.firstChild)
     targetCell.setAttribute('t', 's')
     const vEl = sheetDoc.createElementNS(ns, 'v')
@@ -241,7 +235,6 @@ export function insertXlsx(binary, cellAddress, fieldName) {
 
     const serializer = new XMLSerializer()
     zip.file(sheetPath, serializer.serializeToString(sheetDoc))
-    zip.file(ssPath, serializer.serializeToString(ssDoc))
   } else {
     // No shared strings — use inline string
     while (targetCell.firstChild) targetCell.removeChild(targetCell.firstChild)
