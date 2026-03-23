@@ -1,27 +1,25 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('mammoth', () => ({
-  default: {
-    convertToHtml: vi.fn(),
-  },
+vi.mock('docx-preview', () => ({
+  renderAsync: vi.fn(async (_buf, container) => {
+    container.innerHTML = '<p>Hello</p><p>World</p>'
+  }),
 }))
 
+import * as docx from 'docx-preview'
 import { renderDocx } from '../../../lib/renderers/docx.js'
-import mammoth from 'mammoth'
 
 describe('renderDocx', () => {
-  it('returns html from mammoth and passes binary through unchanged', async () => {
-    mammoth.convertToHtml.mockResolvedValue({ value: '<p>Hello World</p>', messages: [] })
+  it('returns the original buffer as binary unchanged', async () => {
     const buffer = new ArrayBuffer(8)
     const result = await renderDocx(buffer)
-    expect(result.html).toBe('<p>Hello World</p>')
     expect(result.binary).toBe(buffer)
   })
 
-  it('passes arrayBuffer option to mammoth', async () => {
-    mammoth.convertToHtml.mockResolvedValue({ value: '', messages: [] })
-    const buffer = new ArrayBuffer(16)
-    await renderDocx(buffer)
-    expect(mammoth.convertToHtml).toHaveBeenCalledWith({ arrayBuffer: buffer })
+  it('adds data-paragraph-index attributes to all paragraphs', async () => {
+    const buffer = new ArrayBuffer(8)
+    const result = await renderDocx(buffer)
+    expect(result.html).toContain('data-paragraph-index="0"')
+    expect(result.html).toContain('data-paragraph-index="1"')
   })
 })
