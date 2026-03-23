@@ -135,13 +135,15 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       // Note: setCurrentSheet schedules a re-render but active.html is already correct here
     }
 
-    const scrollTop = tabSwitchRef.current ? 0 : viewerRef.current.scrollTop
+    // Capture and reset tabSwitchRef atomically before any early return path
+    const isTabSwitch = tabSwitchRef.current
     tabSwitchRef.current = false
+    const scrollTop = isTabSwitch ? 0 : viewerRef.current.scrollTop
 
     viewerRef.current.innerHTML = isXlsx ? active.html : html
     applyChipOverlay(viewerRef.current, fields)
     viewerRef.current.scrollTop = scrollTop
-  }, [html, fields, currentSheet])
+  }, [html, fields, currentSheet, format, sheets])
 
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
