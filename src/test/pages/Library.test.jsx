@@ -14,14 +14,14 @@ const TEMPLATES = [
     id: 'id-1',
     name: 'Sales Contract',
     sourceFormat: 'docx',
-    variables: [{ name: 'ClientName', marker: 'x [VALUE] y' }, { name: 'Date', marker: 'a [VALUE] b' }],
+    fields: ['ClientName', 'Date'],
     createdAt: 1000000000000,
   },
   {
     id: 'id-2',
     name: 'NDA',
     sourceFormat: 'pdf',
-    variables: [{ name: 'Party', marker: 'c [VALUE] d' }],
+    fields: ['Party'],
     createdAt: 1100000000000,
   },
 ]
