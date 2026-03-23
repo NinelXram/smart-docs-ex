@@ -107,6 +107,8 @@ Rules:
 
 ### Response Validation
 
+> **Note:** The prompt rule `label + value === fullCellText` is advisory — it guides Gemini but cannot be enforced by the caller. The validation fallback below is the authoritative safeguard and is always executed regardless of whether the rule appears satisfied.
+
 1. Parse JSON — check `label`, `value`, `fieldName` all present
 2. Verify `label + value === fullCellText` — if not, fall back to `{ label: "", value: fullCellText, fieldName }` using existing `suggestFieldName` logic for the name
 3. Verify `fieldName` matches `^[a-zA-Z][a-zA-Z0-9_]*$` — if not, strip non-matching characters and prepend `field` if result starts with a digit; if result is empty, fall back to `"field"`
@@ -159,14 +161,21 @@ await openSuggestion(selectedText, surroundingContext, { cellAddress, fullCellTe
 
 ### `handleClick` — XLSX branch
 
-Same shape — `{ cellAddress, fullCellText }`:
+Same shape — `{ cellAddress, fullCellText }`. No text is selected on a plain click, so `selectedText` is passed as `""` (empty string) so `suggestFieldPattern` omits the "User selected" hint line from the prompt. The existing already-a-field guard is retained:
 
 ```js
 const cellAddress = td.dataset.cellAddress
 const fullCellText = td.textContent.trim()
+
+// retain existing guard
+if (/^\{\{.+\}\}$/.test(fullCellText)) {
+  setPopover({ state: 'ready', label: '', fieldName: '', errorMsg: 'This cell is already a field', position: { top: 80, left: 50 } })
+  return
+}
+
 const surroundingContext = getXlsxContext(td)
 const rect = td.getBoundingClientRect()
-await openSuggestion(fullCellText, surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
+await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
 ```
 
 ### `handleAccept` — branched body
@@ -190,6 +199,7 @@ const handleAccept = async () => {
       result = insertXlsx(binary, cellAddress, fieldName, pattern)
     }
     // ... rest of accept handler unchanged (error check, re-render, state reset)
+    // Note: renderXlsx is synchronous (no await); renderDocx is async. Do not add await to the xlsx branch.
   } finally {
     setProcessing(false)
   }
