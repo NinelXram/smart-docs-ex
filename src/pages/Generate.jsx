@@ -1,13 +1,26 @@
-import { useState } from 'react'
-import { generateDocx, generateXlsx, downloadBlob } from '../lib/templateEngine.js'
-
-function decodeBase64(base64) {
-  return Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer
-}
+import { useState, useEffect } from 'react'
+import { generateDocx, generateXlsx, saveFile } from '../lib/templateEngine.js'
+import { getTemplateBinary } from '../lib/storage.js'
 
 export default function Generate({ template, onBack, onToast }) {
   const [values, setValues] = useState({})
   const [generating, setGenerating] = useState(false)
+  const [binary, setBinary] = useState(null)
+  const [binaryError, setBinaryError] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getTemplateBinary(template.id)
+      .then(buf => {
+        setBinary(buf)
+        setLoading(false)
+      })
+      .catch(() => {
+        onToast({ message: 'Template file not found — please re-upload', type: 'error' })
+        setBinaryError(true)
+        setLoading(false)
+      })
+  }, [template.id])
 
   const handleChange = (name, value) => {
     setValues(prev => ({ ...prev, [name]: value }))
@@ -16,7 +29,6 @@ export default function Generate({ template, onBack, onToast }) {
   const handleGenerate = async () => {
     setGenerating(true)
     try {
-      const binary = decodeBase64(template.binary)
       const fieldValues = Object.fromEntries(
         template.fields.map(f => [f, values[f] ?? ''])
       )
@@ -24,10 +36,10 @@ export default function Generate({ template, onBack, onToast }) {
       let blob
       if (template.sourceFormat === 'docx') {
         blob = await generateDocx(binary, fieldValues)
-        downloadBlob(blob, `${template.name}.docx`)
+        await saveFile(blob, `${template.name}.docx`, template.sourceFormat)
       } else {
         blob = await generateXlsx(binary, fieldValues)
-        downloadBlob(blob, `${template.name}.xlsx`)
+        await saveFile(blob, `${template.name}.xlsx`, template.sourceFormat)
       }
     } catch (err) {
       onToast({ message: `Generation failed: ${err.message}`, type: 'error' })
@@ -68,7 +80,7 @@ export default function Generate({ template, onBack, onToast }) {
       <div className="p-3 border-t border-gray-700 flex gap-2 items-center shrink-0">
         <button
           onClick={handleGenerate}
-          disabled={generating}
+          disabled={loading || binaryError || generating}
           className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium py-1.5 rounded transition-colors"
         >
           {generating ? 'Generating…' : '⬇ Download'}
