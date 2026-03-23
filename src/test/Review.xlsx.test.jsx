@@ -140,6 +140,7 @@ describe('Review XLSX — sheet tabs', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
     const viewer = document.querySelector('[data-testid="doc-viewer"]')
+    expect(viewer.innerHTML).toContain('Expenses')
     expect(viewer.innerHTML).not.toContain('Revenue')
   })
 
