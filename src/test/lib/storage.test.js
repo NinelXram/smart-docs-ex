@@ -8,6 +8,8 @@ import {
   getTemplateBinary,
   deleteTemplate,
   migrateFromChromeStorage,
+  getLang,
+  saveLang,
 } from '../../lib/storage.js'
 
 // Binary helper — 4-byte ArrayBuffer
@@ -163,5 +165,22 @@ describe('migrateFromChromeStorage', () => {
     await migrateFromChromeStorage()
     const list = await getTemplates()
     expect(list.map(t => t.id)).toContain('good')
+  })
+})
+
+describe('getLang / saveLang', () => {
+  it('returns "vi" when no lang is stored', async () => {
+    expect(await getLang()).toBe('vi')
+  })
+
+  it('stores and retrieves the language', async () => {
+    await saveLang('en')
+    expect(await getLang()).toBe('en')
+  })
+
+  it('overwrites the previous language', async () => {
+    await saveLang('vi')
+    await saveLang('en')
+    expect(await getLang()).toBe('en')
   })
 })

@@ -48,6 +48,17 @@ export async function getApiKey() {
   return result[API_KEY_KEY] ?? null
 }
 
+const LANG_KEY = 'lang'
+
+export async function getLang() {
+  const result = await chrome.storage.local.get([LANG_KEY])
+  return result[LANG_KEY] ?? 'vi'
+}
+
+export async function saveLang(lang) {
+  await chrome.storage.local.set({ [LANG_KEY]: lang })
+}
+
 export async function saveTemplate(template) {
   const { binary, ...meta } = template
   const dir = await getTemplatesDir()
