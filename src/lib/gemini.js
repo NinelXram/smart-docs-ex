@@ -222,6 +222,52 @@ function _parseAnalyzeResponse(text, fields) {
   return result
 }
 
+export async function _resizeImageToLimit(arrayBuffer, mimeType, maxBytes) {
+  const blob = new Blob([arrayBuffer], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = reject
+    image.src = url
+  })
+  URL.revokeObjectURL(url)
+
+  let width = img.naturalWidth
+  let height = img.naturalHeight
+  let halvingCount = 0
+
+  while (true) {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+
+    const resultBlob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.85)
+    })
+
+    const resultBuffer = await resultBlob.arrayBuffer()
+
+    if (resultBuffer.byteLength <= maxBytes) {
+      return { buffer: resultBuffer, mimeType: 'image/jpeg' }
+    }
+
+    // Check stopping conditions before modifying dimensions
+    if (Math.min(width / 2, height / 2) < 200) {
+      throw new Error('Image too large to resize: could not fit within 4 MB')
+    }
+    if (halvingCount >= 5) {
+      throw new Error('Image too large to resize: could not fit within 4 MB')
+    }
+
+    width = Math.round(width / 2)
+    height = Math.round(height / 2)
+    halvingCount++
+  }
+}
+
 /**
  * Analyze a source file and extract values for the given template fields.
  * Images and PDFs are sent as inlineData; DOCX and TXT are sent as text.

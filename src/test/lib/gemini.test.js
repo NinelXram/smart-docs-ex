@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockGenerateContent = vi.fn()
 const mockGetGenerativeModel = vi.fn(() => ({ generateContent: mockGenerateContent }))
@@ -14,7 +14,7 @@ vi.mock('mammoth', () => ({
 }))
 
 import * as mammoth from 'mammoth'
-import { testConnection, extractVariables, MAX_CHARS, suggestFieldName, suggestFieldPattern, analyzeSource } from '../../lib/gemini.js'
+import { testConnection, extractVariables, MAX_CHARS, suggestFieldName, suggestFieldPattern, analyzeSource, _resizeImageToLimit } from '../../lib/gemini.js'
 
 const VALID_KEY = 'test-api-key'
 const SAMPLE_VARS = [
@@ -295,5 +295,67 @@ describe('analyzeSource', () => {
     const call = mockGenerateContent.mock.calls[0][0]
     const textPart = Array.isArray(call) ? call[1].text : call
     expect(textPart).not.toContain('Respond in Vietnamese.')
+  })
+})
+
+// --- Canvas mock helpers ---
+function makeCanvasMock(blobByteLength) {
+  const fakeBytes = new Uint8Array(blobByteLength)
+  const fakeBlob = new Blob([fakeBytes])
+  // jsdom may not implement Blob.arrayBuffer(); patch it if missing
+  if (typeof fakeBlob.arrayBuffer !== 'function') {
+    fakeBlob.arrayBuffer = () => Promise.resolve(fakeBytes.buffer)
+  }
+  return {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+    toBlob: vi.fn((cb) => cb(fakeBlob)),
+  }
+}
+
+function setupCanvasMocks({ blobByteLength = 100 } = {}) {
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn(() => 'blob:fake'),
+    revokeObjectURL: vi.fn(),
+  })
+  vi.stubGlobal('Image', function () {
+    this.naturalWidth = 800
+    this.naturalHeight = 600
+    this.src = ''
+    setTimeout(() => this.onload?.(), 0)
+  })
+  const canvas = makeCanvasMock(blobByteLength)
+  vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+    if (tag === 'canvas') return canvas
+    // fallback for any other element
+    const el = Object.create(null)
+    el.tagName = tag.toUpperCase()
+    return el
+  })
+  return canvas
+}
+
+describe('_resizeImageToLimit', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('returns mimeType image/jpeg for GIF input', async () => {
+    setupCanvasMocks({ blobByteLength: 100 }) // small output — under any reasonable limit
+    const inputBuffer = new ArrayBuffer(8)
+    const result = await _resizeImageToLimit(inputBuffer, 'image/gif', 4 * 1024 * 1024)
+    expect(result.mimeType).toBe('image/jpeg')
+    expect(result.buffer).toBeInstanceOf(ArrayBuffer)
+  })
+
+  it('throws when halvingCount reaches 5', async () => {
+    // Canvas always returns a 1000-byte blob; limit is 10 bytes → always over limit
+    setupCanvasMocks({ blobByteLength: 1000 })
+    const inputBuffer = new ArrayBuffer(8)
+    await expect(
+      _resizeImageToLimit(inputBuffer, 'image/png', 10)
+    ).rejects.toThrow('Image too large to resize: could not fit within 4 MB')
   })
 })
