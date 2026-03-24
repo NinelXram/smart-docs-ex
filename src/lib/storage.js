@@ -80,6 +80,16 @@ export async function saveTemplate(template) {
   }
 }
 
+export async function saveTemplateMeta(meta) {
+  const dir = await getTemplatesDir()
+  await writeJson(dir, `${meta.id}.meta.json`, meta)
+  const ids = await readIndex(dir)
+  if (!ids.includes(meta.id)) {
+    ids.push(meta.id)
+    await writeIndex(dir, ids)
+  }
+}
+
 export async function getTemplates() {
   const dir = await getTemplatesDir()
   const ids = await readIndex(dir)

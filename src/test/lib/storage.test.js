@@ -4,6 +4,7 @@ import {
   getApiKey,
   checkOpfsAvailable,
   saveTemplate,
+  saveTemplateMeta,
   getTemplates,
   getTemplateBinary,
   deleteTemplate,
@@ -165,6 +166,43 @@ describe('migrateFromChromeStorage', () => {
     await migrateFromChromeStorage()
     const list = await getTemplates()
     expect(list.map(t => t.id)).toContain('good')
+  })
+})
+
+describe('saveTemplateMeta', () => {
+  it('updates metadata without touching the binary', async () => {
+    await saveTemplate({ ...META, binary: makeBuffer([1, 2, 3]) })
+    await saveTemplateMeta({ ...META, fieldAliases: { ClientName: 'Client' } })
+    const list = await getTemplates()
+    expect(list[0].fieldAliases).toEqual({ ClientName: 'Client' })
+    const bin = await getTemplateBinary(META.id)
+    expect(new Uint8Array(bin)).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('does not duplicate the template in the index', async () => {
+    await saveTemplate({ ...META, binary: makeBuffer() })
+    await saveTemplateMeta({ ...META, fieldEnabled: { ClientName: false } })
+    expect(await getTemplates()).toHaveLength(1)
+  })
+
+  it('writes all metadata keys the caller passes', async () => {
+    // Note: preserving keys is the caller's responsibility (spread template before passing).
+    await saveTemplate({ ...META, binary: makeBuffer(), fieldDescriptions: { ClientName: 'A client' } })
+    await saveTemplateMeta({
+      ...META,
+      fieldDescriptions: { ClientName: 'A client' },
+      fieldAliases: { ClientName: 'Client Name' },
+    })
+    const list = await getTemplates()
+    expect(list[0].fieldDescriptions).toEqual({ ClientName: 'A client' })
+    expect(list[0].fieldAliases).toEqual({ ClientName: 'Client Name' })
+    expect(list[0].name).toBe(META.name)
+  })
+
+  it('adds id to index when called for a new id (not previously saved)', async () => {
+    await saveTemplateMeta({ ...META, id: 'brand-new' })
+    const list = await getTemplates()
+    expect(list.some(t => t.id === 'brand-new')).toBe(true)
   })
 })
 
