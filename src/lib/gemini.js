@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import * as mammoth from 'mammoth'
 
-const MODEL = 'gemini-2.0-flash'
+const MODEL = 'gemini-2.5-flash'
 export const MAX_CHARS = 750_000
 
 function buildPrompt(content, lang) {
@@ -24,8 +24,23 @@ function parseResponse(text) {
 }
 
 export async function testConnection(apiKey) {
-  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-  await model.generateContent('Reply with just: OK')
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Reply with just: OK' }] }],
+      }),
+    }
+  )
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
+  }
   return true
 }
 
