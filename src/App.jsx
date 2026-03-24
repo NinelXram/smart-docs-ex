@@ -8,6 +8,7 @@ import Upload from './pages/Upload.jsx'
 import Review from './pages/Review.jsx'
 import Library from './pages/Library.jsx'
 import Generate from './pages/Generate.jsx'
+import EditTemplate from './pages/EditTemplate.jsx'
 
 export default function App() {
   const [step, setStep] = useState(null)
@@ -16,6 +17,7 @@ export default function App() {
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [toast, setToast] = useState(null)
   const [opfsError, setOpfsError] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState(null)
   const [lang, setLang] = useState('vi')
 
   useEffect(() => {
@@ -63,6 +65,24 @@ export default function App() {
       >
         {makeT(lang)('app.loading')}
       </div>
+    )
+  }
+
+  if (editingTemplate) {
+    return (
+      <LanguageProvider lang={lang} setLang={setLang}>
+        <div className="flex flex-col h-screen bg-white text-gray-900 text-sm">
+          {toast && (
+            <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
+          )}
+          <EditTemplate
+            template={editingTemplate}
+            onBack={() => setEditingTemplate(null)}
+            onSave={() => setEditingTemplate(null)}
+            onToast={setToast}
+          />
+        </div>
+      </LanguageProvider>
     )
   }
 
@@ -134,6 +154,7 @@ export default function App() {
                     setSelectedTemplate(tpl)
                     setStep(4)
                   }}
+                  onEdit={tpl => setEditingTemplate(tpl)}
                   onNew={() => setStep(1)}
                   onToast={setToast}
                 />
