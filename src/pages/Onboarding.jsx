@@ -51,7 +51,7 @@ export default function Onboarding({ onSuccess }) {
       </form>
       <p className="text-xs text-gray-500 text-center">
         {t('onboarding.getKey')}{' '}
-        <span className="text-blue-400">aistudio.google.com</span>
+        <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noreferrer" className="text-blue-400 underline">aistudio.google.com/api-keys</a>
       </p>
     </div>
   )
