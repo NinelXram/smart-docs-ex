@@ -247,6 +247,9 @@ export async function _resizeImageToLimit(arrayBuffer, mimeType, maxBytes) {
     const resultBlob = await new Promise((resolve) => {
       canvas.toBlob(resolve, 'image/jpeg', 0.85)
     })
+    if (!resultBlob) {
+      throw new Error('Image too large to resize: could not fit within 4 MB')
+    }
 
     const resultBuffer = await resultBlob.arrayBuffer()
 
