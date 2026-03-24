@@ -296,6 +296,54 @@ describe('analyzeSource', () => {
     const textPart = Array.isArray(call) ? call[1].text : call
     expect(textPart).not.toContain('Respond in Vietnamese.')
   })
+
+  describe('image auto-resize', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    })
+
+    it('does not create a canvas when image is under the size limit', async () => {
+      const createElementSpy = vi.spyOn(document, 'createElement')
+      const file = makeFile({ type: 'image/png', size: 100 })
+      mockGenerateContent.mockResolvedValue({ response: { text: () => '{}' } })
+
+      await analyzeSource(VALID_KEY, file, FIELDS)
+
+      expect(createElementSpy).not.toHaveBeenCalledWith('canvas')
+    })
+
+    it('resizes and sends mimeType image/jpeg when image exceeds the size limit', async () => {
+      setupCanvasMocks({ blobByteLength: 100 }) // small output — under 4 MB limit
+      const oversizedBuffer = new ArrayBuffer(4 * 1024 * 1024 + 1)
+      const file = makeFile({
+        type: 'image/png',
+        size: 4 * 1024 * 1024 + 1,
+        content: oversizedBuffer,
+      })
+      mockGenerateContent.mockResolvedValue({ response: { text: () => '{"fullName":"Jane"}' } })
+
+      const result = await analyzeSource(VALID_KEY, file, FIELDS)
+
+      expect(result).toEqual({ fullName: 'Jane' })
+      const call = mockGenerateContent.mock.calls[0][0]
+      expect(Array.isArray(call)).toBe(true)
+      expect(call[0].inlineData.mimeType).toBe('image/jpeg')
+    })
+
+    it('throws the resize error when canvas cannot shrink the image enough', async () => {
+      // Canvas always returns a blob still over the 4 MB limit → halving exhausts
+      const bigBlobSize = 4 * 1024 * 1024 + 1
+      setupCanvasMocks({ blobByteLength: bigBlobSize })
+
+      const file = makeFile({ type: 'image/png', size: 4 * 1024 * 1024 + 1 })
+
+      await expect(analyzeSource(VALID_KEY, file, FIELDS)).rejects.toThrow(
+        'Image too large to resize: could not fit within 4 MB'
+      )
+      expect(mockGenerateContent).not.toHaveBeenCalled()
+    })
+  })
 })
 
 // --- Canvas mock helpers ---
