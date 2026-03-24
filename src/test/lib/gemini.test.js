@@ -320,18 +320,16 @@ function setupCanvasMocks({ blobByteLength = 100 } = {}) {
     revokeObjectURL: vi.fn(),
   })
   vi.stubGlobal('Image', function () {
-    this.naturalWidth = 800
-    this.naturalHeight = 600
+    this.naturalWidth = 25600
+    this.naturalHeight = 25600
     this.src = ''
     setTimeout(() => this.onload?.(), 0)
   })
+  const originalCreateElement = document.createElement.bind(document)
   const canvas = makeCanvasMock(blobByteLength)
   vi.spyOn(document, 'createElement').mockImplementation((tag) => {
     if (tag === 'canvas') return canvas
-    // fallback for any other element
-    const el = Object.create(null)
-    el.tagName = tag.toUpperCase()
-    return el
+    return originalCreateElement(tag)
   })
   return canvas
 }
