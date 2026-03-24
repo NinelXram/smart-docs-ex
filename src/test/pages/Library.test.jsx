@@ -97,6 +97,31 @@ describe('Library', () => {
       expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
     )
   })
+
+  it('renders an edit button per template', async () => {
+    storage.getTemplates.mockResolvedValue(TEMPLATES)
+    render(<Library onSelect={vi.fn()} onEdit={vi.fn()} onNew={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => screen.getByText('Sales Contract'))
+    expect(screen.getAllByRole('button', { name: /edit template/i })).toHaveLength(2)
+  })
+
+  it('calls onEdit with the template when pencil button is clicked', async () => {
+    storage.getTemplates.mockResolvedValue(TEMPLATES)
+    const onEdit = vi.fn()
+    render(<Library onSelect={vi.fn()} onEdit={onEdit} onNew={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => screen.getByText('Sales Contract'))
+    fireEvent.click(screen.getAllByRole('button', { name: /edit template/i })[0])
+    expect(onEdit).toHaveBeenCalledWith(TEMPLATES[0])
+  })
+
+  it('pencil click does not trigger onSelect', async () => {
+    storage.getTemplates.mockResolvedValue(TEMPLATES)
+    const onSelect = vi.fn()
+    render(<Library onSelect={onSelect} onEdit={vi.fn()} onNew={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => screen.getByText('Sales Contract'))
+    fireEvent.click(screen.getAllByRole('button', { name: /edit template/i })[0])
+    expect(onSelect).not.toHaveBeenCalled()
+  })
 })
 
 describe('Library — Vietnamese', () => {

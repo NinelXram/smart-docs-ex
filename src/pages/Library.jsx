@@ -9,7 +9,7 @@ const FORMAT_BADGE = {
   xls: 'bg-green-700',
 }
 
-export default function Library({ onSelect, onNew, onToast }) {
+export default function Library({ onSelect, onEdit = () => {}, onNew, onToast }) {
   const { t } = useLanguage()
   const [templates, setTemplates] = useState([])
   const [loading, setLoading] = useState(true)
@@ -83,6 +83,13 @@ export default function Library({ onSelect, onNew, onToast }) {
             >
               {(tpl.sourceFormat ?? '').toUpperCase()}
             </span>
+            <button
+              onClick={e => { e.stopPropagation(); onEdit(tpl) }}
+              aria-label={t('library.ariaEdit')}
+              className="text-gray-500 hover:text-blue-500 shrink-0 text-sm"
+            >
+              ✎
+            </button>
             <button
               onClick={e => handleDelete(e, tpl.id)}
               aria-label={t('library.ariaDelete')}
