@@ -237,14 +237,30 @@ export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDesc
 
   let contents
 
-  if (file.type === 'image/png' || file.type === 'image/jpeg' || file.type === 'image/gif' ||
-      file.type === 'image/webp' || file.type === 'application/pdf') {
-    // Binary path — size guard
+  if (file.type === 'image/png' || file.type === 'image/jpeg' ||
+      file.type === 'image/gif' || file.type === 'image/webp') {
+    // Image path — auto-resize if needed
+    let buffer = await file.arrayBuffer()
+    let mimeType = file.type
+    if (file.size > MAX_BINARY_BYTES) {
+      ({ buffer, mimeType } = await _resizeImageToLimit(buffer, mimeType, MAX_BINARY_BYTES))
+    }
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    const base64 = btoa(binary)
+    contents = [{ inlineData: { mimeType, data: base64 } }, { text: prompt }]
+
+  } else if (file.type === 'application/pdf') {
+    // PDF path — size guard unchanged
     if (file.size > MAX_BINARY_BYTES) {
       throw new Error(`File too large: ${file.size} bytes (max ${MAX_BINARY_BYTES})`)
     }
     const buffer = await file.arrayBuffer()
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    const base64 = btoa(binary)
     contents = [{ inlineData: { mimeType: file.type, data: base64 } }, { text: prompt }]
   } else if (file.type === DOCX_MIME) {
     // DOCX — extract plain text via mammoth

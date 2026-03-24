@@ -239,9 +239,9 @@ describe('analyzeSource', () => {
     expect(result).toEqual({ jobTitle: 'Dev' })
   })
 
-  it('throws if binary file exceeds 4 MB', async () => {
-    const file = makeFile({ type: 'image/png', size: 4 * 1024 * 1024 + 1 })
-    await expect(analyzeSource(VALID_KEY, file, FIELDS)).rejects.toThrow()
+  it('throws if PDF exceeds 4 MB', async () => {
+    const file = makeFile({ type: 'application/pdf', size: 4 * 1024 * 1024 + 1 })
+    await expect(analyzeSource(VALID_KEY, file, FIELDS)).rejects.toThrow('File too large')
     expect(mockGenerateContent).not.toHaveBeenCalled()
   })
 
