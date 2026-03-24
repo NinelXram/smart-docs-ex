@@ -227,3 +227,115 @@ describe('Generate', () => {
     })
   })
 })
+
+describe('Generate — fieldAliases', () => {
+  const TEMPLATE_WITH_ALIAS = {
+    ...TEMPLATE_DOCX,
+    fieldAliases: { ClientName: 'Client Full Name' },
+  }
+
+  it('shows alias as field label when fieldAliases is set', async () => {
+    render(<Generate template={TEMPLATE_WITH_ALIAS} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByLabelText('Client Full Name')).toBeInTheDocument())
+    expect(screen.queryByLabelText('ClientName')).not.toBeInTheDocument()
+  })
+
+  it('falls back to original name when no alias', async () => {
+    render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByLabelText('ClientName')).toBeInTheDocument())
+  })
+})
+
+describe('Generate — fieldEnabled', () => {
+  const TEMPLATE_WITH_DISABLED = {
+    ...TEMPLATE_DOCX,
+    fieldEnabled: { ClientName: false },
+  }
+
+  it('disabled field input is disabled', async () => {
+    render(<Generate template={TEMPLATE_WITH_DISABLED} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+    expect(screen.getByLabelText('ClientName')).toBeDisabled()
+    expect(screen.getByLabelText('EffectiveDate')).not.toBeDisabled()
+  })
+
+  it('forces disabled field value to "" in generateDocx call', async () => {
+    engine.generateDocx.mockResolvedValue(new Blob(['docx']))
+    engine.saveFile.mockResolvedValue(undefined)
+    render(<Generate template={TEMPLATE_WITH_DISABLED} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() =>
+      expect(engine.generateDocx).toHaveBeenCalledWith(
+        FAKE_BUFFER,
+        { ClientName: '', EffectiveDate: '' }
+      )
+    )
+  })
+
+  it('all fields enabled when fieldEnabled is absent (no regression)', async () => {
+    // TEMPLATE_DOCX has no fieldEnabled key — all fields should be passed normally
+    engine.generateDocx.mockResolvedValue(new Blob(['docx']))
+    engine.saveFile.mockResolvedValue(undefined)
+    render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+    fireEvent.change(screen.getByLabelText('ClientName'), { target: { value: 'Acme' } })
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() =>
+      expect(engine.generateDocx).toHaveBeenCalledWith(
+        FAKE_BUFFER,
+        { ClientName: 'Acme', EffectiveDate: '' }
+      )
+    )
+  })
+
+  it('analyzeSource is called only with enabled fields', async () => {
+    gemini.analyzeSource.mockResolvedValue({ EffectiveDate: '2026-01-01' })
+    render(<Generate template={TEMPLATE_WITH_DISABLED} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+    const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByTestId('analyze-file-input'), { target: { files: [file] } })
+
+    await waitFor(() =>
+      expect(gemini.analyzeSource).toHaveBeenCalledWith(
+        'fake-api-key',
+        file,
+        ['EffectiveDate'],
+        expect.any(String),
+        expect.anything()
+      )
+    )
+  })
+
+  it('analyzeSource receives all fields when fieldEnabled is absent', async () => {
+    gemini.analyzeSource.mockResolvedValue({})
+    render(<Generate template={TEMPLATE_DOCX} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+    const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByTestId('analyze-file-input'), { target: { files: [file] } })
+
+    await waitFor(() =>
+      expect(gemini.analyzeSource).toHaveBeenCalledWith(
+        'fake-api-key',
+        file,
+        ['ClientName', 'EffectiveDate'],
+        expect.any(String),
+        expect.anything()
+      )
+    )
+  })
+
+  it('disabled field is not populated after analyze', async () => {
+    gemini.analyzeSource.mockResolvedValue({ ClientName: 'Injected', EffectiveDate: '2026-01-01' })
+    render(<Generate template={TEMPLATE_WITH_DISABLED} onBack={vi.fn()} onToast={vi.fn()} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled())
+
+    const file = new File(['content'], 'cv.txt', { type: 'text/plain' })
+    fireEvent.change(screen.getByTestId('analyze-file-input'), { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByLabelText('EffectiveDate')).toHaveValue('2026-01-01'))
+    expect(screen.getByLabelText('ClientName')).toHaveValue('')
+  })
+})

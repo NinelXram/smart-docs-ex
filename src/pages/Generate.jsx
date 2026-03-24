@@ -40,11 +40,12 @@ export default function Generate({ template, onBack, onToast }) {
     }
     setAnalyzing(true)
     try {
-      const matched = await analyzeSource(apiKey, file, template.fields, lang, template.fieldDescriptions ?? {})
+      const enabledFields = template.fields.filter(f => template.fieldEnabled?.[f] ?? true)
+      const matched = await analyzeSource(apiKey, file, enabledFields, lang, template.fieldDescriptions ?? {})
       setValues(prev => {
         const next = { ...prev }
         for (const [key, val] of Object.entries(matched)) {
-          if (!prev[key]) next[key] = val
+          if (enabledFields.includes(key) && !prev[key]) next[key] = val
         }
         return next
       })
@@ -59,7 +60,10 @@ export default function Generate({ template, onBack, onToast }) {
     setGenerating(true)
     try {
       const fieldValues = Object.fromEntries(
-        template.fields.map(f => [f, values[f] ?? ''])
+        template.fields.map(f => [
+          f,
+          (template.fieldEnabled?.[f] ?? true) ? (values[f] ?? '') : ''
+        ])
       )
 
       let blob
@@ -122,11 +126,16 @@ export default function Generate({ template, onBack, onToast }) {
 
       <div className="flex-1 overflow-auto p-4 flex flex-col gap-4">
         {template.fields.map(name => {
+          const alias = template.fieldAliases?.[name] ?? name
+          const isEnabled = template.fieldEnabled?.[name] ?? true
           const description = template.fieldDescriptions?.[name]
           return (
-            <div key={name} className="flex flex-col gap-1">
-              <label htmlFor={`field-${name}`} className="text-xs text-gray-400 font-medium">
-                {name}
+            <div key={name} className={`flex flex-col gap-1 ${isEnabled ? '' : 'opacity-50'}`}>
+              <label
+                htmlFor={`field-${name}`}
+                className={`text-xs text-gray-400 font-medium ${isEnabled ? '' : 'line-through'}`}
+              >
+                {alias}
               </label>
               {description && (
                 <p className="text-xs text-gray-500 -mt-0.5">{description}</p>
@@ -134,9 +143,10 @@ export default function Generate({ template, onBack, onToast }) {
               <input
                 id={`field-${name}`}
                 value={values[name] ?? ''}
+                disabled={!isEnabled}
                 onChange={e => handleChange(name, e.target.value)}
-                className="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                placeholder={`${t('generate.fieldPlaceholder')} ${name}…`}
+                className="bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                placeholder={`${t('generate.fieldPlaceholder')} ${alias}…`}
               />
             </div>
           )
