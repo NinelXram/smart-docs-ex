@@ -41,7 +41,13 @@ export default function Generate({ template, onBack, onToast }) {
     setAnalyzing(true)
     try {
       const matched = await analyzeSource(apiKey, file, template.fields, lang)
-      setValues(prev => ({ ...prev, ...matched }))
+      setValues(prev => {
+        const next = { ...prev }
+        for (const [key, val] of Object.entries(matched)) {
+          if (!prev[key]) next[key] = val
+        }
+        return next
+      })
     } catch (err) {
       onToast({ message: `${t('generate.analyzeError')} ${err.message}`, type: 'error' })
     } finally {
@@ -72,7 +78,13 @@ export default function Generate({ template, onBack, onToast }) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
+      {analyzing && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-gray-900/80 backdrop-blur-sm gap-3">
+          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-purple-300">{t('generate.analyzing')}</p>
+        </div>
+      )}
       <div className="p-3 border-b border-gray-700 flex gap-2 items-center shrink-0">
         <button
           onClick={onBack}
