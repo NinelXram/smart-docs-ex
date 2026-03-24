@@ -9,6 +9,7 @@ import Review from './pages/Review.jsx'
 import Library from './pages/Library.jsx'
 import Generate from './pages/Generate.jsx'
 import EditTemplate from './pages/EditTemplate.jsx'
+import WelcomeOverlay from './components/WelcomeOverlay.jsx'
 
 export default function App() {
   const [step, setStep] = useState(null)
@@ -19,6 +20,7 @@ export default function App() {
   const [opfsError, setOpfsError] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState(null)
   const [lang, setLang] = useState('vi')
+  const [showWelcome, setShowWelcome] = useState(true)
 
   useEffect(() => {
     Promise.all([getApiKey(), getLang(), getTemplates()])
@@ -77,6 +79,7 @@ export default function App() {
   if (editingTemplate) {
     return (
       <LanguageProvider lang={lang} setLang={setLang}>
+        {showWelcome && <WelcomeOverlay onClose={() => setShowWelcome(false)} />}
         <div className="flex flex-col h-screen bg-white text-gray-900 text-sm">
           {toast && (
             <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
@@ -112,6 +115,7 @@ export default function App() {
 
   return (
     <LanguageProvider lang={lang} setLang={setLang}>
+      {showWelcome && <WelcomeOverlay onClose={() => setShowWelcome(false)} />}
       <div className="flex flex-col h-screen bg-white text-gray-900 text-sm">
         {toast && (
           <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
