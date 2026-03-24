@@ -59,7 +59,8 @@
     "variables": "biến",
     "errorLoad": "Tải mẫu thất bại:",
     "errorDelete": "Xóa thất bại:",
-    "ariaDelete": "xóa mẫu"
+    "ariaDelete": "xóa mẫu",
+    "ariaEdit": "Chỉnh sửa mẫu"
   },
   "generate": {
     "back": "← Quay lại",
@@ -83,5 +84,18 @@
   },
   "toast": {
     "ariaDismiss": "đóng thông báo"
+  },
+  "editTemplate": {
+    "back": "← Quay lại",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "saved": "Đã cập nhật mẫu",
+    "title": "Chỉnh sửa",
+    "toggle": "Bật trường",
+    "displayName": "Tên hiển thị",
+    "description": "Mô tả",
+    "token": "Token",
+    "errorNameEmpty": "Tên hiển thị không được để trống",
+    "errorSaveFailed": "Lưu thất bại:"
   }
 }

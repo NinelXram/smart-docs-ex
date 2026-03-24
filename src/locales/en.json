@@ -59,7 +59,8 @@
     "variables": "variables",
     "errorLoad": "Failed to load templates:",
     "errorDelete": "Delete failed:",
-    "ariaDelete": "delete template"
+    "ariaDelete": "delete template",
+    "ariaEdit": "Edit template"
   },
   "generate": {
     "back": "← Back",
@@ -83,5 +84,18 @@
   },
   "toast": {
     "ariaDismiss": "dismiss toast"
+  },
+  "editTemplate": {
+    "back": "← Back",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Template updated",
+    "title": "Edit",
+    "toggle": "Enable field",
+    "displayName": "Display name",
+    "description": "Description",
+    "token": "Token",
+    "errorNameEmpty": "Display name cannot be empty",
+    "errorSaveFailed": "Save failed:"
   }
 }
