@@ -71,7 +71,9 @@
     "errorFailed": "Generation failed:",
     "analyze": "Analyze",
     "analyzing": "Analyzing…",
-    "analyzeError": "Analysis failed:"
+    "analyzeError": "Analysis failed:",
+    "clearForm": "Clear",
+    "clearFormConfirm": "Clear all field values?"
   },
   "progressBar": {
     "upload": "Upload",

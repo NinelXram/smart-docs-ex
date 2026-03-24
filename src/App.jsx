@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getApiKey, checkOpfsAvailable, getLang, saveLang } from './lib/storage.js'
+import { getApiKey, checkOpfsAvailable, getLang, saveLang, getTemplates } from './lib/storage.js'
 import { LanguageProvider, makeT } from './lib/i18n.jsx'
 import ProgressBar from './components/ProgressBar.jsx'
 import Toast from './components/Toast.jsx'
@@ -21,11 +21,17 @@ export default function App() {
   const [lang, setLang] = useState('vi')
 
   useEffect(() => {
-    Promise.all([getApiKey(), getLang()])
-      .then(([key, savedLang]) => {
+    Promise.all([getApiKey(), getLang(), getTemplates()])
+      .then(([key, savedLang, templates]) => {
         setApiKey(key)
         setLang(savedLang)
-        setStep(key ? 1 : 0)
+        if (!key) {
+          setStep(0)
+        } else if (templates.length > 0) {
+          setStep(3)
+        } else {
+          setStep(1)
+        }
       })
       .catch(() => setStep(0))
   }, [])
@@ -81,6 +87,24 @@ export default function App() {
             onSave={() => setEditingTemplate(null)}
             onToast={setToast}
           />
+          <footer className="shrink-0 border-t border-gray-100 py-1.5 text-center text-[10px] text-gray-400">
+            Created by{' '}
+            <a
+              href="https://huynhquocbao.web.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-600 underline transition-colors"
+            >
+              Huynh Quoc Bao
+            </a>
+            {' · '}
+            <a
+              href="mailto:esdridz@gmail.com"
+              className="hover:text-gray-600 underline transition-colors"
+            >
+              esdridz@gmail.com
+            </a>
+          </footer>
         </div>
       </LanguageProvider>
     )
@@ -103,7 +127,7 @@ export default function App() {
         {step > 0 && (
           <>
             <header className="flex items-center justify-between px-4 py-2 border-b border-gray-200 shrink-0">
-              <span className="font-semibold">Chicken Fill Form</span>
+              <span className="font-semibold">AI GÁNH (ây ai gánh)</span>
               <div className="flex items-center gap-3">
                 <button
                   className="text-xs text-gray-500 hover:text-gray-900 transition-colors"
@@ -169,6 +193,24 @@ export default function App() {
             </div>
           </>
         )}
+        <footer className="shrink-0 border-t border-gray-100 py-1.5 text-center text-[10px] text-gray-400">
+          Created by{' '}
+          <a
+            href="https://huynhquocbao.web.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-600 underline transition-colors"
+          >
+            Huynh Quoc Bao
+          </a>
+          {' · '}
+          <a
+            href="mailto:esdridz@gmail.com"
+            className="hover:text-gray-600 underline transition-colors"
+          >
+            esdridz@gmail.com
+          </a>
+        </footer>
       </div>
     </LanguageProvider>
   )

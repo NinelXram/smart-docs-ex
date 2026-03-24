@@ -31,6 +31,12 @@ export default function Generate({ template, onBack, onToast }) {
     setValues(prev => ({ ...prev, [name]: value }))
   }
 
+  const handleClear = () => {
+    if (window.confirm(t('generate.clearFormConfirm'))) {
+      setValues({})
+    }
+  }
+
   const handleAnalyze = async (file) => {
     if (analyzing) return
     const apiKey = await getApiKey()
@@ -154,6 +160,13 @@ export default function Generate({ template, onBack, onToast }) {
       </div>
 
       <div className="p-3 border-t border-gray-700 flex gap-2 items-center shrink-0">
+        <button
+          onClick={handleClear}
+          disabled={loading || binaryError || generating}
+          className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded border border-gray-600 disabled:opacity-50 transition-colors"
+        >
+          {t('generate.clearForm')}
+        </button>
         <button
           onClick={handleGenerate}
           disabled={loading || binaryError || generating}

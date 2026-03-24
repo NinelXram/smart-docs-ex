@@ -71,7 +71,9 @@
     "errorFailed": "Tạo tệp thất bại:",
     "analyze": "Phân tích",
     "analyzing": "Đang phân tích…",
-    "analyzeError": "Phân tích thất bại:"
+    "analyzeError": "Phân tích thất bại:",
+    "clearForm": "Xóa",
+    "clearFormConfirm": "Xóa tất cả giá trị đã nhập?"
   },
   "progressBar": {
     "upload": "Tải lên",
