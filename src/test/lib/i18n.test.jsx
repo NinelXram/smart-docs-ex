@@ -5,7 +5,7 @@ import { makeT, LanguageProvider, useLanguage } from '../../lib/i18n.jsx'
 describe('makeT', () => {
   it('returns the value for the active locale', () => {
     const t = makeT('en')
-    expect(t('app.title')).toBe('Doc Template Agent')
+    expect(t('app.title')).toBe('Chicken Fill Form')
   })
 
   it('returns the Vietnamese value when lang is vi', () => {
@@ -38,7 +38,7 @@ describe('LanguageProvider + useLanguage', () => {
 
   it('exposes lang and t to consumers', () => {
     render(
-      <LanguageProvider lang="en" setLang={() => {}}>
+      <LanguageProvider lang="en" setLang={() => { }}>
         <Consumer />
       </LanguageProvider>
     )
@@ -47,7 +47,7 @@ describe('LanguageProvider + useLanguage', () => {
 
   it('renders Vietnamese strings when lang is vi', () => {
     render(
-      <LanguageProvider lang="vi" setLang={() => {}}>
+      <LanguageProvider lang="vi" setLang={() => { }}>
         <Consumer />
       </LanguageProvider>
     )

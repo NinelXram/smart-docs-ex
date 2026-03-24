@@ -188,7 +188,7 @@ export default {
     "type": "module"
   },
   "action": {
-    "default_title": "Open Doc Template Agent"
+    "default_title": "Open Chicken Fill Form"
   },
   "icons": {
     "16": "icons/icon16.png",
@@ -218,7 +218,7 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Doc Template Agent</title>
+    <title>Chicken Fill Form</title>
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,85 @@
+<h2>Review Panel — XLSX Sheet Tabs Design</h2>
+<p class="subtitle">Annotated mockup of the updated Review layout</p>
+
+<div class="mockup">
+  <div class="mockup-header">Review Step — XLSX file with 3 sheets</div>
+  <div class="mockup-body" style="padding:0;background:#111827;border-radius:0 0 6px 6px;overflow:hidden;font-family:monospace;font-size:11px;">
+
+    <!-- Header bar (unchanged) -->
+    <div style="padding:8px 10px;border-bottom:1px solid #374151;display:flex;gap:6px;align-items:center;background:#1f2937;">
+      <span style="background:#374151;color:#9ca3af;padding:2px 7px;border-radius:3px;font-size:10px;">← Back</span>
+      <span style="color:#6b7280;font-size:10px;">2 fields</span>
+      <input style="flex:1;background:#111827;border:1px solid #4b5563;border-radius:3px;padding:2px 6px;font-size:10px;color:#9ca3af;" placeholder="Template name…" readonly />
+      <span style="background:#2563eb;color:#fff;padding:2px 8px;border-radius:3px;font-size:10px;">Save Template</span>
+    </div>
+
+    <!-- Hint bar (unchanged) -->
+    <div style="padding:5px 10px;border-bottom:1px solid #374151;background:#1a2030;color:#9ca3af;font-size:10px;">
+      <b style="color:#d1d5db;">Click</b> a cell — AI will identify the label and value.
+      <b style="color:#d1d5db;"> Select text</b> to hint which part is the value.
+    </div>
+
+    <!-- NEW: Sheet tab bar -->
+    <div style="padding:0 10px;border-bottom:1px solid #374151;background:#1f2937;display:flex;gap:0;overflow-x:auto;white-space:nowrap;">
+      <!-- Active tab -->
+      <div style="padding:6px 14px;background:#111827;color:#fff;font-size:10px;border-right:1px solid #374151;border-top:2px solid #2563eb;cursor:pointer;position:relative;">
+        Sheet1
+      </div>
+      <!-- Inactive tabs -->
+      <div style="padding:6px 14px;color:#6b7280;font-size:10px;border-right:1px solid #374151;cursor:pointer;">
+        Summary
+      </div>
+      <div style="padding:6px 14px;color:#6b7280;font-size:10px;cursor:pointer;">
+        Employees
+      </div>
+    </div>
+
+    <!-- Sheet content (only active sheet) -->
+    <div style="padding:10px;overflow-y:auto;max-height:180px;">
+      <table style="border-collapse:collapse;width:100%;font-size:10px;">
+        <tr>
+          <td style="border:1px solid #374151;padding:3px 7px;color:#9ca3af;">Client</td>
+          <td style="border:1px solid #374151;padding:3px 7px;color:#9ca3af;">Invoice Date</td>
+          <td style="border:1px solid #374151;padding:3px 7px;color:#9ca3af;">Amount</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #374151;padding:3px 7px;background:#1e3a5f;">
+            <span style="background:#2563eb;color:#fff;padding:1px 5px;border-radius:3px;font-size:9px;">{{client_name}}</span>
+          </td>
+          <td style="border:1px solid #374151;padding:3px 7px;background:#1e3a5f;">
+            <span style="background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px;font-size:9px;">{{invoice_date}}</span>
+          </td>
+          <td style="border:1px solid #374151;padding:3px 7px;cursor:pointer;color:#e5e7eb;">$500.00</td>
+        </tr>
+        <tr>
+          <td style="border:1px solid #374151;padding:3px 7px;color:#e5e7eb;">Acme Corp</td>
+          <td style="border:1px solid #374151;padding:3px 7px;color:#e5e7eb;">2024-01-16</td>
+          <td style="border:1px solid #374151;padding:3px 7px;color:#e5e7eb;">$300.00</td>
+        </tr>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<div class="section">
+  <h3>What changes</h3>
+  <ul>
+    <li><b>New helper <code>parseXlsxSheets(html)</code></b> — splits the concatenated HTML string by <code>&lt;h3&gt;</code> tags into <code>[{name, html}]</code>. Pure function, no renderer changes.</li>
+    <li><b>Review.jsx</b> — adds <code>currentSheet</code> state (sheet name string). When format is xlsx, parses html into sheets array, renders tab bar above viewer, sets <code>innerHTML</code> to active sheet only.</li>
+    <li><b>Tab switching</b> — clicking a tab updates <code>currentSheet</code>; the effect that writes <code>innerHTML</code> re-runs. Chip overlay still works (applies to only the active sheet DOM).</li>
+    <li><b>After field insertion</b> — <code>insertXlsx</code> re-renders to a new html string → re-parsed → <code>currentSheet</code> preserved by name.</li>
+    <li><b>Overflow</b> — tab bar is <code>overflow-x: auto</code> for workbooks with many sheets.</li>
+    <li><b>DOCX unchanged</b> — no tab bar rendered for docx files.</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>What stays the same</h3>
+  <ul>
+    <li><code>renderXlsx</code> — no changes to renderer or its return shape</li>
+    <li><code>scanData</code> — html field remains a plain string, no schema changes</li>
+    <li>Field insertion, save flow, popover — all unchanged</li>
+    <li>All existing tests — renderer tests unaffected; Review tests need new tab-click assertions</li>
+  </ul>
+</div>

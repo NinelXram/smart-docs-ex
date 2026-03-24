@@ -57,7 +57,7 @@
 ```json
 {
   "app": {
-    "title": "Doc Template Agent",
+    "title": "Chicken Fill Form",
     "changeApiKey": "Change API Key",
     "library": "Library",
     "loading": "Loading…",
@@ -65,7 +65,7 @@
     "langSaveError": "Failed to save language preference"
   },
   "onboarding": {
-    "title": "Doc Template Agent",
+    "title": "Chicken Fill Form",
     "subtitle": "Enter your Gemini API key to get started",
     "placeholder": "Gemini API key",
     "submit": "Test Connection",
@@ -259,7 +259,7 @@ import { makeT, LanguageProvider, useLanguage } from '../../lib/i18n.js'
 describe('makeT', () => {
   it('returns the value for the active locale', () => {
     const t = makeT('en')
-    expect(t('app.title')).toBe('Doc Template Agent')
+    expect(t('app.title')).toBe('Chicken Fill Form')
   })
 
   it('returns the Vietnamese value when lang is vi', () => {
@@ -774,7 +774,7 @@ export default function App() {
         {step > 0 && (
           <>
             <header className="flex items-center justify-between px-4 py-2 border-b border-gray-200 shrink-0">
-              <span className="font-semibold">Doc Template Agent</span>
+              <span className="font-semibold">Chicken Fill Form</span>
               <div className="flex items-center gap-3">
                 <button
                   className="text-xs text-gray-500 hover:text-gray-900 transition-colors"

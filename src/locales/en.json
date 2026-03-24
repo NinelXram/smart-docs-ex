@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Doc Template Agent",
+    "title": "Chicken Fill Form",
     "changeApiKey": "Change API Key",
     "library": "Library",
     "loading": "Loading…",
@@ -8,7 +8,7 @@
     "langSaveError": "Failed to save language preference"
   },
   "onboarding": {
-    "title": "Doc Template Agent",
+    "title": "Chicken Fill Form",
     "subtitle": "Enter your Gemini API key to get started",
     "placeholder": "Gemini API key",
     "submit": "Test Connection",
