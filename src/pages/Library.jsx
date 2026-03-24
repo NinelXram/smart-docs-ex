@@ -70,7 +70,7 @@ export default function Library({ onSelect, onNew, onToast }) {
           <div
             key={tpl.id}
             onClick={() => onSelect(tpl)}
-            className="flex items-center gap-2 p-3 rounded-lg bg-white hover:bg-gray-100 cursor-pointer transition-colors"
+            className="flex items-center gap-2 p-3 rounded-lg bg-white hover:bg-gray-100 cursor-pointer transition-colors border border-gray-200"
           >
             <div className="flex-1 min-w-0">
               <div className="text-sm text-gray-900 font-medium truncate">{tpl.name}</div>

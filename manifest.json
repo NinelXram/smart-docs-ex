@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Doc-Template Agent",
+  "name": "Chicken Fill Form",
   "version": "1.0.0",
   "description": "Parse documents, identify variables, and create reusable templates with Gemini AI.",
   "permissions": [

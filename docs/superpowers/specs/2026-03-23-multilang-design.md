@@ -4,7 +4,7 @@
 
 ## Overview
 
-Add Vietnamese (default) and English language support to the Gemini Doc-Template Agent Chrome extension. Localization covers the full UI and AI-generated field descriptions/suggestions from Gemini.
+Add Vietnamese (default) and English language support to the Chicken Fill Form Chrome extension. Localization covers the full UI and AI-generated field descriptions/suggestions from Gemini.
 
 ## Requirements
 

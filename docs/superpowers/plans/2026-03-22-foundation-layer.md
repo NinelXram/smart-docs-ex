@@ -1,4 +1,4 @@
-# Gemini Doc-Template Agent — Plan 1: Foundation Layer
+# Chicken Fill Form — Plan 1: Foundation Layer
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -175,7 +175,7 @@ export default {
 ```json
 {
   "manifest_version": 3,
-  "name": "Gemini Doc-Template Agent",
+  "name": "Chicken Fill Form",
   "version": "1.0.0",
   "description": "Parse documents, identify variables, and create reusable templates with Gemini AI.",
   "permissions": ["storage", "unlimitedStorage", "sidePanel"],

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Gemini Doc-Template Agent** — A Chrome Extension (Manifest V3) side panel that lets users upload DOCX/XLSX files, select text to define template fields (with Gemini AI naming suggestions), save templates, and generate filled document instances.
+**Chicken Fill Form** — A Chrome Extension (Manifest V3) side panel that lets users upload DOCX/XLSX files, select text to define template fields (with Gemini AI naming suggestions), save templates, and generate filled document instances.
 
 ## Commands
 

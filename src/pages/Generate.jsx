@@ -40,7 +40,7 @@ export default function Generate({ template, onBack, onToast }) {
     }
     setAnalyzing(true)
     try {
-      const matched = await analyzeSource(apiKey, file, template.fields, lang)
+      const matched = await analyzeSource(apiKey, file, template.fields, lang, template.fieldDescriptions ?? {})
       setValues(prev => {
         const next = { ...prev }
         for (const [key, val] of Object.entries(matched)) {

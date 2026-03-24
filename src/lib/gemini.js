@@ -177,10 +177,16 @@ function _sanitizeFieldName(raw) {
 const MAX_BINARY_BYTES = 4 * 1024 * 1024 // 4 MB
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-function _buildAnalyzePrompt(fields, lang) {
+function _buildAnalyzePrompt(fields, lang, fieldDescriptions = {}) {
   const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
+  const fieldList = fields
+    .map(f => {
+      const desc = fieldDescriptions[f]
+      return desc ? `- ${f}: ${desc}` : `- ${f}`
+    })
+    .join('\n')
   return (
-    `You are filling in a document template. The template has these fields: [${fields.join(', ')}].\n` +
+    `You are filling in a document template. The template has these fields:\n${fieldList}\n\n` +
     `Extract the value for each field from the source document provided.\n` +
     `Return a JSON object mapping each field name to its value. Only include fields you find.\n` +
     `Respond with ONLY the JSON object, no markdown, no explanation.` +
@@ -210,9 +216,9 @@ function _parseAnalyzeResponse(text, fields) {
  * @param {string} [lang]
  * @returns {Promise<Record<string,string>>}
  */
-export async function analyzeSource(apiKey, file, fields, lang = 'vi') {
+export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDescriptions = {}) {
   const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-  const prompt = _buildAnalyzePrompt(fields, lang)
+  const prompt = _buildAnalyzePrompt(fields, lang, fieldDescriptions)
 
   let contents
 
