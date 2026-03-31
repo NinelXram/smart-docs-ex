@@ -8,12 +8,6 @@ function buildPrompt(content, lang) {
   const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
   return `Analyze this document. Identify all variable fields likely to change across iterations (e.g., names, IDs, dates, amounts). Return a JSON array where each item has: "name" (a short camelCase label) and "marker" (a short phrase of 5-10 words from the document that contains the variable's value, with that value replaced by the literal token [VALUE]). The [VALUE] token must appear exactly once in each marker string. Example: "agreement is made with [VALUE] hereinafter".
 
-Rules:
-- Only identify fields whose values clearly vary between document instances. Do not include static/fixed text.
-- Each "marker" must be a verbatim phrase from the document with exactly one [VALUE] token.
-- Do not guess or infer fields that are not present in the document.
-- Each field name must be unique and in camelCase.
-
 Respond with ONLY the JSON array, no markdown, no explanation.
 
 Document content:
@@ -94,17 +88,7 @@ export async function suggestFieldName(apiKey, selectedText, surroundingContext,
     const sample = fieldSampleData[f]
     return sample ? `${f} (e.g. "${sample}")` : f
   }).join(', ')
-  const existingNote = existingFields.length
-    ? `Fields already defined (your suggestion must NOT duplicate any of these): [${existingFieldDesc}].`
-    : 'No fields defined yet.'
-  const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". ${existingNote} Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose.
-
-Rules:
-- The field name must be unique — do not reuse or slightly vary an existing name.
-- The field name must match ^[a-zA-Z][a-zA-Z0-9_]*$.
-- Base the name on the selected text's meaning, not its literal characters.
-
-Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
+  const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFieldDesc}]. Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose. Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
 
 
   console.log(prompt)
@@ -220,42 +204,23 @@ const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 
 function _buildAnalyzePrompt(fields, lang, fieldDescriptions = {}, fieldSampleData = {}, currentValues = {}) {
   const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
-
-  const emptyFields = fields.filter(f => !currentValues[f])
-  const filledFields = fields.filter(f => currentValues[f])
-
-  if (emptyFields.length === 0) {
-    return (
-      `All template fields are already filled. Return an empty JSON object: {}\n` +
-      `Respond with ONLY the JSON object, no markdown, no explanation.` +
-      langInstruction
-    )
-  }
-
-  const fieldList = emptyFields
+  const fieldList = fields
     .map(f => {
       const desc = fieldDescriptions[f]
       const sample = fieldSampleData[f]
+      const current = currentValues[f]
       const details = []
       if (desc) details.push(desc)
       if (sample) details.push(`example: "${sample}"`)
-      return details.length ? `- ${f}: ${details.join('; ')}` : `- ${f}`
+      let line = details.length ? `- ${f}: ${details.join('; ')}` : `- ${f}`
+      if (current) line += ` [already filled: "${current}"]`
+      return line
     })
     .join('\n')
-
-  const skipSection = filledFields.length
-    ? `\nAlready-filled fields — do NOT include these in your response: ${filledFields.join(', ')}\n`
-    : ''
-
   return (
-    `You are filling in a document template. Extract values for these empty fields:\n${fieldList}\n` +
-    skipSection +
-    `\nRules:\n` +
-    `- Only return values you can clearly identify in the source document. Do not guess.\n` +
-    `- Omit any field whose value cannot be determined — do not return null, empty string, or placeholder text.\n` +
-    `- Do NOT include already-filled fields in your response under any circumstances.\n` +
-    `- All returned values must be plain strings.\n\n` +
-    `Return a JSON object mapping field names to their extracted string values.\n` +
+    `You are filling in a document template. The template has these fields:\n${fieldList}\n\n` +
+    `Extract the value for each field from the source document provided.\n` +
+    `Return a JSON object mapping each field name to its value. Only include fields you find.\n` +
     `Respond with ONLY the JSON object, no markdown, no explanation.` +
     langInstruction
   )
