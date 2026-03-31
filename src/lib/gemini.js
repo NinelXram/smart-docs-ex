@@ -88,7 +88,7 @@ export async function suggestFieldName(apiKey, selectedText, surroundingContext,
     const sample = fieldSampleData[f]
     return sample ? `${f} (e.g. "${sample}")` : f
   }).join(', ')
-  const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFieldDesc}]. Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose. Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
+  const prompt = `The following text was selected from a document: "${selectedText}". In the context below, the selected text is wrapped with >>> and <<< markers to show its exact position — base your analysis on that specific occurrence, not any other similar text nearby.\n\nContext: "${surroundingContext}"\n\nFields already defined: [${existingFieldDesc}]. Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose. Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
 
 
   console.log(prompt)

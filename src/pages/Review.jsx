@@ -246,7 +246,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
           }
         }
       }
-      const surroundingContext = [...beforeParas, targetParaText, ...afterParas].join(' ')
+      // Mark the selected text within the target paragraph so the AI prompt can
+      // pinpoint exactly which occurrence was chosen, even when the same text
+      // appears elsewhere in the surrounding context.
+      const markedTargetPara = targetParaText.replace(selectedText, `>>>${selectedText}<<<`)
+      const surroundingContext = [...beforeParas, markedTargetPara, ...afterParas].join(' ')
 
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
