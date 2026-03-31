@@ -145,20 +145,31 @@ export function insertDocx(binary, selectedText, paragraphIndex, fieldName) {
 
   if (paragraphIndex < 0 || paragraphIndex >= paras.length) return { error: 'paragraph_index_out_of_range' }
 
-  // Try the hinted index first; fall back to a full scan if text not found there.
+  // Try the hinted index first; fall back to a nearest-first scan if text not found there.
   // (HTML paragraph count from mammoth may differ from raw <w:p> count in XML.)
+  function paraVisibleText(p) {
+    const runs = Array.from(p.getElementsByTagNameNS(W_NS, 'r')).filter(r => !isInsideDel(r))
+    return runs.map(r => Array.from(r.getElementsByTagNameNS(W_NS, 't')).map(t => t.textContent).join('')).join('')
+  }
+
   let targetPara = null
   if (paragraphIndex >= 0 && paragraphIndex < paras.length) {
-    const runs = Array.from(paras[paragraphIndex].getElementsByTagNameNS(W_NS, 'r'))
-    const text = runs.map(r => Array.from(r.getElementsByTagNameNS(W_NS, 't')).map(t => t.textContent).join('')).join('')
-    if (text.includes(selectedText)) targetPara = paras[paragraphIndex]
+    if (paraVisibleText(paras[paragraphIndex]).includes(selectedText)) {
+      targetPara = paras[paragraphIndex]
+    }
   }
   if (!targetPara) {
-    targetPara = paras.find(p => {
-      const runs = Array.from(p.getElementsByTagNameNS(W_NS, 'r'))
-      const text = runs.map(r => Array.from(r.getElementsByTagNameNS(W_NS, 't')).map(t => t.textContent).join('')).join('')
-      return text.includes(selectedText)
-    }) ?? null
+    // Search outward from paragraphIndex so duplicate text picks the nearest occurrence,
+    // not the first occurrence in the document.
+    for (let delta = 1; delta <= paras.length && !targetPara; delta++) {
+      const fwd = paragraphIndex + delta
+      const bwd = paragraphIndex - delta
+      if (fwd < paras.length && paraVisibleText(paras[fwd]).includes(selectedText)) {
+        targetPara = paras[fwd]
+      } else if (bwd >= 0 && paraVisibleText(paras[bwd]).includes(selectedText)) {
+        targetPara = paras[bwd]
+      }
+    }
   }
   if (!targetPara) return { error: 'text_not_found' }
 
