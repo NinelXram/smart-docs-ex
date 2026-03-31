@@ -83,8 +83,12 @@ export async function extractVariables(apiKey, content, lang = 'vi') {
  * @param {string[]} existingFields
  * @returns {Promise<{ fieldName: string, description: string } | null>}
  */
-export async function suggestFieldName(apiKey, selectedText, surroundingContext, existingFields, lang = 'vi') {
-  const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFields.join(', ')}]. Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose. Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
+export async function suggestFieldName(apiKey, selectedText, surroundingContext, existingFields, lang = 'vi', fieldSampleData = {}) {
+  const existingFieldDesc = existingFields.map(f => {
+    const sample = fieldSampleData[f]
+    return sample ? `${f} (e.g. "${sample}")` : f
+  }).join(', ')
+  const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFieldDesc}]. Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose. Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
 
   const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
   const result = await Promise.race([
@@ -115,7 +119,7 @@ export async function suggestFieldName(apiKey, selectedText, surroundingContext,
  * @param {string} [spatialContext] — column header, row label, and sibling cells
  * @returns {Promise<{ label: string, value: string, fieldName: string }>}
  */
-export async function suggestFieldPattern(apiKey, fullCellText, selectedText, existingFields, spatialContext, lang = 'vi') {
+export async function suggestFieldPattern(apiKey, fullCellText, selectedText, existingFields, spatialContext, lang = 'vi', fieldSampleData = {}) {
   const selectedLine = selectedText
     ? `User selected: "${selectedText}"\n`
     : ''
@@ -123,7 +127,10 @@ export async function suggestFieldPattern(apiKey, fullCellText, selectedText, ex
     ? `Spatial context — ${spatialContext}\n`
     : ''
   const existingLine = existingFields.length
-    ? `Existing field names: [${existingFields.join(', ')}]\n`
+    ? `Existing field names: [${existingFields.map(f => {
+        const sample = fieldSampleData[f]
+        return sample ? `${f} (e.g. "${sample}")` : f
+      }).join(', ')}]\n`
     : ''
 
   const prompt =
@@ -192,12 +199,19 @@ function _sanitizeFieldName(raw) {
 const MAX_BINARY_BYTES = 4 * 1024 * 1024 // 4 MB
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-function _buildAnalyzePrompt(fields, lang, fieldDescriptions = {}) {
+function _buildAnalyzePrompt(fields, lang, fieldDescriptions = {}, fieldSampleData = {}, currentValues = {}) {
   const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
   const fieldList = fields
     .map(f => {
       const desc = fieldDescriptions[f]
-      return desc ? `- ${f}: ${desc}` : `- ${f}`
+      const sample = fieldSampleData[f]
+      const current = currentValues[f]
+      const details = []
+      if (desc) details.push(desc)
+      if (sample) details.push(`example: "${sample}"`)
+      let line = details.length ? `- ${f}: ${details.join('; ')}` : `- ${f}`
+      if (current) line += ` [already filled: "${current}"]`
+      return line
     })
     .join('\n')
   return (
@@ -280,9 +294,9 @@ export async function _resizeImageToLimit(arrayBuffer, mimeType, maxBytes) {
  * @param {string} [lang]
  * @returns {Promise<Record<string,string>>}
  */
-export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDescriptions = {}) {
+export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDescriptions = {}, fieldSampleData = {}, currentValues = {}) {
   const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-  const prompt = _buildAnalyzePrompt(fields, lang, fieldDescriptions)
+  const prompt = _buildAnalyzePrompt(fields, lang, fieldDescriptions, fieldSampleData, currentValues)
 
   let contents
 

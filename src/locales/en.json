@@ -35,6 +35,9 @@
     "description": "Description",
     "descriptionHint": "(max 10 words)",
     "descriptionPlaceholder": "What does this field represent?",
+    "sampleData": "Sample data",
+    "sampleDataHint": "(example)",
+    "sampleDataPlaceholder": "Example of an actual value…",
     "accept": "Accept",
     "dismiss": "Dismiss",
     "analyzing": "Analyzing…",
@@ -73,7 +76,8 @@
     "analyzing": "Analyzing…",
     "analyzeError": "Analysis failed:",
     "clearForm": "Clear",
-    "clearFormConfirm": "Clear all field values?"
+    "clearFormConfirm": "Clear all field values?",
+    "sampleData": "Sample"
   },
   "progressBar": {
     "upload": "Upload",
@@ -96,6 +100,7 @@
     "toggle": "Enable field",
     "displayName": "Display name",
     "description": "Description",
+    "sampleData": "Sample data",
     "token": "Token",
     "errorNameEmpty": "Display name cannot be empty",
     "errorSaveFailed": "Save failed:"

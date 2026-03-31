@@ -47,7 +47,7 @@ export default function Generate({ template, onBack, onToast }) {
     setAnalyzing(true)
     try {
       const enabledFields = template.fields.filter(f => template.fieldEnabled?.[f] ?? true)
-      const matched = await analyzeSource(apiKey, file, enabledFields, lang, template.fieldDescriptions ?? {})
+      const matched = await analyzeSource(apiKey, file, enabledFields, lang, template.fieldDescriptions ?? {}, template.fieldSampleData ?? {}, values)
       setValues(prev => {
         const next = { ...prev }
         for (const [key, val] of Object.entries(matched)) {
@@ -135,6 +135,7 @@ export default function Generate({ template, onBack, onToast }) {
           const alias = template.fieldAliases?.[name] ?? name
           const isEnabled = template.fieldEnabled?.[name] ?? true
           const description = template.fieldDescriptions?.[name]
+          const sampleData = template.fieldSampleData?.[name]
           return (
             <div key={name} className={`flex flex-col gap-1 ${isEnabled ? '' : 'opacity-50'}`}>
               <label
@@ -145,6 +146,9 @@ export default function Generate({ template, onBack, onToast }) {
               </label>
               {description && (
                 <p className="text-xs text-gray-500 -mt-0.5">{description}</p>
+              )}
+              {sampleData && (
+                <p className="text-xs text-gray-600 -mt-0.5 font-mono">{t('generate.sampleData')}: <em className="not-italic text-gray-500">{sampleData}</em></p>
               )}
               <input
                 id={`field-${name}`}

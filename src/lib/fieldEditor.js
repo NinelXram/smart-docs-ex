@@ -4,6 +4,18 @@ const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const XML_NS = 'http://www.w3.org/XML/1998/namespace'
 
 /**
+ * Returns true if the node has a <w:del> ancestor (tracked deletion — mammoth skips these).
+ */
+function isInsideDel(node) {
+  let n = node.parentNode
+  while (n) {
+    if (n.namespaceURI === W_NS && n.localName === 'del') return true
+    n = n.parentNode
+  }
+  return false
+}
+
+/**
  * Collect all <w:p> descendants of <w:body>, depth-first, excluding those
  * inside <w:del> elements (tracked deletions, which mammoth skips).
  * Headers/footers are in separate XML files and never appear in document.xml's body.
@@ -29,7 +41,9 @@ function collectBodyParagraphs(body) {
  * Returns null on success or an error string.
  */
 function insertInParagraph(para, selectedText, fieldName) {
-  const runs = Array.from(para.getElementsByTagNameNS(W_NS, 'r'))
+  // Exclude runs inside <w:del> — they are tracked deletions that mammoth hides,
+  // so they are invisible to the user and must not be considered part of the visible text.
+  const runs = Array.from(para.getElementsByTagNameNS(W_NS, 'r')).filter(r => !isInsideDel(r))
   const runTexts = runs.map(r => {
     const tEls = Array.from(r.getElementsByTagNameNS(W_NS, 't'))
     return tEls.map(t => t.textContent).join('')
@@ -101,7 +115,9 @@ function insertInParagraph(para, selectedText, fieldName) {
   const parent = firstRun.parentNode
   const involvedRuns = runs.slice(firstRunIdx, lastRunIdx + 1)
   for (const r of replacements) parent.insertBefore(r, firstRun)
-  for (const r of involvedRuns) parent.removeChild(r)
+  // Remove each involved run from its own parentNode — runs may live inside <w:ins>
+  // or other tracked-change wrappers whose parent differs from firstRun's parent.
+  for (const r of involvedRuns) r.parentNode.removeChild(r)
 
   return null
 }

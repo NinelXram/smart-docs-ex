@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { renderDocx } from '../lib/renderers/docx.js'
 import { renderXlsx } from '../lib/renderers/xlsx.js'
@@ -14,38 +14,14 @@ const CHIP_COLORS = [
 ]
 
 
-function applyChipOverlay(container, fields) {
-  if (!fields.length) return
+function applyChipOverlayHtml(html, fields) {
+  if (!fields.length) return html
   const pattern = /\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  const textNodes = []
-  let node
-  while ((node = walker.nextNode())) {
-    pattern.lastIndex = 0
-    if (pattern.test(node.textContent)) textNodes.push(node)
-  }
-  for (const textNode of textNodes) {
-    const parent = textNode.parentNode
-    const frag = document.createDocumentFragment()
-    let text = textNode.textContent
-    let lastIndex = 0
-    pattern.lastIndex = 0
-    let match
-    while ((match = pattern.exec(text)) !== null) {
-      if (match.index > lastIndex) {
-        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
-      }
-      const fieldName = match[1]
-      const colorIdx = fields.indexOf(fieldName)
-      const chip = document.createElement('span')
-      chip.className = `inline-block px-1.5 py-0.5 rounded text-xs font-mono text-white ${CHIP_COLORS[colorIdx % CHIP_COLORS.length] || 'bg-gray-600'}`
-      chip.textContent = `{{${fieldName}}}`
-      frag.appendChild(chip)
-      lastIndex = match.index + match[0].length
-    }
-    if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)))
-    parent.replaceChild(frag, textNode)
-  }
+  return html.replace(pattern, (_, fieldName) => {
+    const colorIdx = fields.indexOf(fieldName)
+    const color = CHIP_COLORS[colorIdx % CHIP_COLORS.length] || 'bg-gray-600'
+    return `<span class="inline-block px-1.5 py-0.5 rounded text-xs font-mono text-white ${color}">{{${fieldName}}}</span>`
+  })
 }
 
 function parseCellAddr(addr) {
@@ -130,6 +106,8 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const [binary, setBinary] = useState(initialBinary)
   const [fields, setFields] = useState(initialFields)
   const [fieldDescriptions, setFieldDescriptions] = useState({})
+  const [fieldSampleData, setFieldSampleData] = useState({})
+  const [showFieldPanel, setShowFieldPanel] = useState(false)
   const [templateName, setTemplateName] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -137,61 +115,81 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const [popover, setPopover] = useState(null)
   // popover shape: { state: 'loading'|'ready', label: string, fieldName: string, description: string, errorMsg: string, position: {top, left} }
   const pendingRef = useRef(null)
+  const popoverRef = useRef(null)
   // pending shape (DOCX): { selectedText, paragraphIndex }
   // pending shape (XLSX): { cellAddress, fullCellText }
 
   const [currentSheet, setCurrentSheet] = useState(null)
   const tabSwitchRef = useRef(false)
+  const savedScrollRef = useRef(0)
 
   const sheets = useMemo(
     () => (format === 'xlsx' ? parseXlsxSheets(html) : []),
     [html, format]
   )
 
-  // Apply active sheet (or full html for DOCX) to DOM after html, fields, or tab change.
-  // tabSwitchRef distinguishes explicit tab switches (scroll → 0) from re-renders (preserve scroll).
-  useEffect(() => {
-    if (!viewerRef.current) return
-
+  // Compute the display HTML with chip overlays applied as a string transformation.
+  // This avoids direct DOM manipulation that conflicts with React's reconciler.
+  const displayHtml = useMemo(() => {
     const isXlsx = format === 'xlsx' && sheets.length > 0
-    const active = isXlsx
-      ? (sheets.find(s => s.name === currentSheet) ?? sheets[0])
-      : null
+    const rawHtml = isXlsx
+      ? (sheets.find(s => s.name === currentSheet) ?? sheets[0])?.html ?? ''
+      : html
+    return applyChipOverlayHtml(rawHtml, fields)
+  }, [html, fields, currentSheet, format, sheets])
 
-    // Sync currentSheet on first mount (null) or if active sheet changed
-    if (isXlsx && active.name !== currentSheet) {
-      setCurrentSheet(active.name)
-      // Note: setCurrentSheet schedules a re-render but active.html is already correct here
-    }
+  // Sync currentSheet for XLSX (first mount or when sheets change)
+  useEffect(() => {
+    if (format !== 'xlsx' || !sheets.length) return
+    const active = sheets.find(s => s.name === currentSheet) ?? sheets[0]
+    if (active && active.name !== currentSheet) setCurrentSheet(active.name)
+  }, [currentSheet, format, sheets])
 
-    // Capture and reset tabSwitchRef atomically before any early return path
+  // Restore scroll position after displayHtml updates (runs synchronously after DOM commit)
+  useLayoutEffect(() => {
+    if (!viewerRef.current) return
     const isTabSwitch = tabSwitchRef.current
     tabSwitchRef.current = false
-    const scrollTop = isTabSwitch ? 0 : viewerRef.current.scrollTop
+    viewerRef.current.scrollTop = isTabSwitch ? 0 : savedScrollRef.current
+  }, [displayHtml])
 
-    viewerRef.current.innerHTML = isXlsx ? active.html : html
-    applyChipOverlay(viewerRef.current, fields)
-    viewerRef.current.scrollTop = scrollTop
-  }, [html, fields, currentSheet, format, sheets])
+  // Clamp popover within container bounds after every render
+  useLayoutEffect(() => {
+    if (!popover || !popoverRef.current || !viewerRef.current) return
+    const containerEl = viewerRef.current.parentElement
+    if (!containerEl) return
+    const containerH = containerEl.offsetHeight
+    const containerW = containerEl.offsetWidth
+    const popEl = popoverRef.current
+    const popH = popEl.offsetHeight
+    const popW = popEl.offsetWidth
+    const MARGIN = 8
+    if (parseFloat(popEl.style.top) + popH > containerH - MARGIN) {
+      popEl.style.top = Math.max(MARGIN, containerH - popH - MARGIN) + 'px'
+    }
+    if (parseFloat(popEl.style.left) + popW > containerW - MARGIN) {
+      popEl.style.left = Math.max(MARGIN, containerW - popW - MARGIN) + 'px'
+    }
+  }, [popover])
 
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
-    setPopover({ state: 'loading', label: '', fieldName: '', description: '', errorMsg: '', position })
+    setPopover({ state: 'loading', label: '', fieldName: '', description: '', sampleData: '', errorMsg: '', position })
     try {
       if (format === 'xlsx') {
         const { fullCellText } = pendingData
-        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields, surroundingContext, lang)
+        const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields, surroundingContext, lang, fieldSampleData)
         setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName, description: result.description ?? '' } : null)
       } else {
-        const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields, lang)
+        const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields, lang, fieldSampleData)
         setPopover(prev => prev ? { ...prev, state: 'ready', label: '', fieldName: suggested?.fieldName ?? '', description: suggested?.description ?? '' } : null)
       }
     } catch {
       setPopover(prev => prev
-        ? { ...prev, state: 'ready', label: '', fieldName: '', description: '', errorMsg: t('review.errorAiFailed') }
+        ? { ...prev, state: 'ready', label: '', fieldName: '', description: '', sampleData: '', errorMsg: t('review.errorAiFailed') }
         : null)
     }
-  }, [apiKey, fields, format, lang, t])
+  }, [apiKey, fields, fieldSampleData, format, lang, t])
 
   const handleMouseUp = useCallback(async () => {
     const sel = window.getSelection()
@@ -241,7 +239,8 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       const surroundingContext = [...beforeParas, targetParaText, ...afterParas].join(' ')
 
       const rect = sel.getRangeAt(0).getBoundingClientRect()
-      await openSuggestion(selectedText, surroundingContext, { selectedText, paragraphIndex }, { top: rect.bottom + 8, left: rect.left })
+      const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
+      await openSuggestion(selectedText, surroundingContext, { selectedText, paragraphIndex }, { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left })
     } else if (format === 'xlsx') {
       const anchorCell = sel.anchorNode?.parentElement?.closest('td[data-cell-address]') ?? null
       const focusCell = sel.focusNode?.parentElement?.closest('td[data-cell-address]') ?? null
@@ -251,7 +250,8 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       const fullCellText = anchorCell.textContent.trim()
       const surroundingContext = getXlsxContext(anchorCell)
       const rect = sel.getRangeAt(0).getBoundingClientRect()
-      await openSuggestion(selectedText, surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
+      const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
+      await openSuggestion(selectedText, surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left })
     }
   }, [format, openSuggestion, t])
 
@@ -272,7 +272,8 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
     const surroundingContext = getXlsxContext(td)
     const rect = td.getBoundingClientRect()
-    await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8, left: rect.left })
+    const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
+    await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left })
   }, [format, openSuggestion, t])
 
   const handleTabClick = useCallback((name) => {
@@ -295,6 +296,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       return
     }
 
+    savedScrollRef.current = viewerRef.current?.scrollTop ?? 0
     setProcessing(true)
     try {
       let result
@@ -318,6 +320,9 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       setFields(prev => [...prev, fieldName])
       if (popover.description?.trim()) {
         setFieldDescriptions(prev => ({ ...prev, [fieldName]: popover.description.trim() }))
+      }
+      if (popover.sampleData?.trim()) {
+        setFieldSampleData(prev => ({ ...prev, [fieldName]: popover.sampleData.trim() }))
       }
 
       const { html: newHtml } = format === 'docx'
@@ -350,6 +355,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         binary,
         fields,
         fieldDescriptions,
+        fieldSampleData,
         createdAt: Date.now(),
       })
       onSave()
@@ -370,7 +376,12 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         >
           {t('review.back')}
         </button>
-        <span className="text-xs text-gray-500">{fields.length} {t(fields.length === 1 ? 'review.fields' : 'review.fields_plural')}</span>
+        <button
+          onClick={() => setShowFieldPanel(v => !v)}
+          className={`text-xs px-2 py-1 rounded border transition-colors ${showFieldPanel ? 'border-blue-400 text-blue-600 bg-blue-50' : 'border-gray-200 text-gray-500 hover:border-gray-400'}`}
+        >
+          {fields.length} {t(fields.length === 1 ? 'review.fields' : 'review.fields_plural')}
+        </button>
         <input
           value={templateName}
           onChange={e => setTemplateName(e.target.value)}
@@ -388,6 +399,27 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
       {saveError && (
         <p className="text-xs text-red-400 text-center px-3 py-1">{saveError}</p>
+      )}
+
+      {showFieldPanel && fields.length > 0 && (
+        <div className="px-3 py-2 border-b border-gray-200 max-h-32 overflow-y-auto bg-gray-50 shrink-0">
+          <div className="flex flex-col gap-1.5">
+            {fields.map((f, idx) => {
+              const color = CHIP_COLORS[idx % CHIP_COLORS.length]
+              const desc = fieldDescriptions[f]
+              const sample = fieldSampleData[f]
+              return (
+                <div key={f} className="flex items-start gap-1.5 text-xs">
+                  <span className={`inline-block px-1.5 py-0.5 rounded font-mono text-white shrink-0 ${color}`}>{`{{${f}}}`}</span>
+                  <span className="text-gray-500 leading-relaxed">
+                    {desc && <span>{desc}</span>}
+                    {sample && <span className="text-gray-400">{desc ? ' · ' : ''}{t('review.sampleData')}: <em>{sample}</em></span>}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {format === 'xlsx' && (
@@ -425,6 +457,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
           className={`h-full overflow-y-auto p-3 text-sm text-gray-800 leading-relaxed${format === 'xlsx' ? ' [&_table]:border-collapse [&_table]:w-full [&_table]:text-xs [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1.5 [&_td[data-cell-address]]:cursor-pointer [&_td[data-cell-address]:hover]:bg-blue-50 [&_td[data-cell-address]:hover]:transition-colors' : ''}`}
           onMouseUp={handleMouseUp}
           onClick={handleClick}
+          dangerouslySetInnerHTML={{ __html: displayHtml }}
         />
 
         {/* Spinner overlay during field insertion */}
@@ -437,10 +470,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
         {/* Suggestion popover */}
         {popover && (
           <div
+            ref={popoverRef}
             role="dialog"
             aria-label={t('review.ariaPopover')}
             className="absolute z-20 bg-white border border-gray-200 rounded-lg shadow-xl p-3 w-64"
-            style={{ top: popover.position.top, left: Math.min(popover.position.left, 120) }}
+            style={{ top: popover.position.top, left: popover.position.left }}
           >
             {popover.state === 'loading' ? (
               <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -488,6 +522,21 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
                   }}
                   onKeyDown={e => { if (e.key === 'Enter') handleAccept(); if (e.key === 'Escape') setPopover(null) }}
                   placeholder={t('review.descriptionPlaceholder')}
+                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
+                />
+                <label htmlFor="field-sample-input" className="text-xs text-gray-500 block mb-1">
+                  {t('review.sampleData')} <span className="text-gray-400">{t('review.sampleDataHint')}</span>
+                </label>
+                <input
+                  id="field-sample-input"
+                  value={popover.sampleData ?? ''}
+                  onChange={e => {
+                    if (e.target.value.length <= 50 || e.target.value.length < (popover.sampleData ?? '').length) {
+                      setPopover(prev => ({ ...prev, sampleData: e.target.value }))
+                    }
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAccept(); if (e.key === 'Escape') setPopover(null) }}
+                  placeholder={t('review.sampleDataPlaceholder')}
                   className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
                 />
                 {format === 'xlsx' && (popover.label || popover.fieldName) && (

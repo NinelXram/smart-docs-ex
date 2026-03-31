@@ -11,6 +11,9 @@ export default function EditTemplate({ template, onBack, onSave, onToast }) {
   const [descriptions, setDescriptions] = useState(() =>
     Object.fromEntries(template.fields.map(f => [f, template.fieldDescriptions?.[f] ?? '']))
   )
+  const [sampleData, setSampleData] = useState(() =>
+    Object.fromEntries(template.fields.map(f => [f, template.fieldSampleData?.[f] ?? '']))
+  )
   const [enabled, setEnabled] = useState(() =>
     Object.fromEntries(template.fields.map(f => [f, template.fieldEnabled?.[f] ?? true]))
   )
@@ -21,8 +24,9 @@ export default function EditTemplate({ template, onBack, onSave, onToast }) {
     return template.fields.some(f => {
       const initAlias = template.fieldAliases?.[f] ?? f
       const initDesc = template.fieldDescriptions?.[f] ?? ''
+      const initSample = template.fieldSampleData?.[f] ?? ''
       const initEnabled = template.fieldEnabled?.[f] ?? true
-      return aliases[f] !== initAlias || descriptions[f] !== initDesc || enabled[f] !== initEnabled
+      return aliases[f] !== initAlias || descriptions[f] !== initDesc || sampleData[f] !== initSample || enabled[f] !== initEnabled
     })
   }, [aliases, descriptions, enabled, template])
 
@@ -49,6 +53,11 @@ export default function EditTemplate({ template, onBack, onSave, onToast }) {
           template.fields
             .filter(f => descriptions[f].trim())
             .map(f => [f, descriptions[f].trim()])
+        ),
+        fieldSampleData: Object.fromEntries(
+          template.fields
+            .filter(f => sampleData[f].trim())
+            .map(f => [f, sampleData[f].trim()])
         ),
         fieldEnabled: Object.fromEntries(
           template.fields
@@ -135,6 +144,17 @@ export default function EditTemplate({ template, onBack, onSave, onToast }) {
                     }
                   }}
                   placeholder={t('review.descriptionPlaceholder')}
+                  className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-gray-500">{t('editTemplate.sampleData')}</label>
+                <input
+                  value={sampleData[f]}
+                  maxLength={50}
+                  onChange={e => setSampleData(prev => ({ ...prev, [f]: e.target.value }))}
+                  placeholder={t('review.sampleDataPlaceholder')}
                   className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500"
                 />
               </div>
