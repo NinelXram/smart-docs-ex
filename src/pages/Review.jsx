@@ -174,19 +174,21 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
   const openSuggestion = useCallback(async (selectedText, surroundingContext, pendingData, position) => {
     pendingRef.current = pendingData
-    setPopover({ state: 'loading', label: '', fieldName: '', description: '', sampleData: '', errorMsg: '', position })
+    // For DOCX, sampleData is the selected text; for XLSX it will be set from result.value once AI responds
+    const initialSample = format === 'docx' ? selectedText : ''
+    setPopover({ state: 'loading', label: '', fieldName: '', description: '', sampleData: initialSample, errorMsg: '', position })
     try {
       if (format === 'xlsx') {
         const { fullCellText } = pendingData
         const result = await suggestFieldPattern(apiKey, fullCellText, selectedText, fields, surroundingContext, lang, fieldSampleData)
-        setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName, description: result.description ?? '' } : null)
+        setPopover(prev => prev ? { ...prev, state: 'ready', label: result.label, fieldName: result.fieldName, description: result.description ?? '', sampleData: result.value ?? fullCellText } : null)
       } else {
         const suggested = await suggestFieldName(apiKey, selectedText, surroundingContext, fields, lang, fieldSampleData)
         setPopover(prev => prev ? { ...prev, state: 'ready', label: '', fieldName: suggested?.fieldName ?? '', description: suggested?.description ?? '' } : null)
       }
     } catch {
       setPopover(prev => prev
-        ? { ...prev, state: 'ready', label: '', fieldName: '', description: '', sampleData: '', errorMsg: t('review.errorAiFailed') }
+        ? { ...prev, state: 'ready', label: '', fieldName: '', description: '', errorMsg: t('review.errorAiFailed') }
         : null)
     }
   }, [apiKey, fields, fieldSampleData, format, lang, t])
@@ -524,21 +526,12 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
                   placeholder={t('review.descriptionPlaceholder')}
                   className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
                 />
-                <label htmlFor="field-sample-input" className="text-xs text-gray-500 block mb-1">
-                  {t('review.sampleData')} <span className="text-gray-400">{t('review.sampleDataHint')}</span>
-                </label>
-                <input
-                  id="field-sample-input"
-                  value={popover.sampleData ?? ''}
-                  onChange={e => {
-                    if (e.target.value.length <= 50 || e.target.value.length < (popover.sampleData ?? '').length) {
-                      setPopover(prev => ({ ...prev, sampleData: e.target.value }))
-                    }
-                  }}
-                  onKeyDown={e => { if (e.key === 'Enter') handleAccept(); if (e.key === 'Escape') setPopover(null) }}
-                  placeholder={t('review.sampleDataPlaceholder')}
-                  className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-blue-500 mb-2"
-                />
+                {popover.sampleData && (
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-500 mb-0.5">{t('review.sampleData')}</p>
+                    <p className="text-xs font-mono text-gray-700 bg-gray-100 rounded px-2 py-1 truncate">{popover.sampleData}</p>
+                  </div>
+                )}
                 {format === 'xlsx' && (popover.label || popover.fieldName) && (
                   <p className="text-xs text-gray-400 mb-2 font-mono">
                     {popover.label ?? ''}<span className="text-blue-400">{`{{${popover.fieldName || '…'}}}`}</span>

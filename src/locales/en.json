@@ -36,8 +36,6 @@
     "descriptionHint": "(max 10 words)",
     "descriptionPlaceholder": "What does this field represent?",
     "sampleData": "Sample data",
-    "sampleDataHint": "(example)",
-    "sampleDataPlaceholder": "Example of an actual value…",
     "accept": "Accept",
     "dismiss": "Dismiss",
     "analyzing": "Analyzing…",
