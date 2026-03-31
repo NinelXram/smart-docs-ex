@@ -204,34 +204,50 @@ const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 
 function _buildAnalyzePrompt(fields, lang, fieldDescriptions = {}, fieldSampleData = {}, currentValues = {}) {
   const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
-  const fieldList = fields
-    .map(f => {
-      const desc = fieldDescriptions[f]
-      const sample = fieldSampleData[f]
-      const current = currentValues[f]
-      const details = []
-      if (desc) details.push(desc)
-      if (sample) details.push(`example: "${sample}"`)
-      let line = details.length ? `- ${f}: ${details.join('; ')}` : `- ${f}`
-      if (current) line += ` [already filled: "${current}"]`
-      return line
-    })
-    .join('\n')
+
+  const toFill = fields.filter(f => !currentValues[f])
+  const alreadyFilled = fields.filter(f => currentValues[f])
+
+  const toFillSection = toFill.length
+    ? `[FIELDS TO FILL]\n` +
+      toFill.map(f => {
+        const desc = fieldDescriptions[f]
+        const sample = fieldSampleData[f]
+        const details = []
+        if (desc) details.push(desc)
+        if (sample) details.push(`example: "${sample}"`)
+        return details.length ? `- ${f}: ${details.join('; ')}` : `- ${f}`
+      }).join('\n')
+    : ''
+
+  const alreadyFilledSection = alreadyFilled.length
+    ? `\n\n[ALREADY FILLED — DO NOT return values for these fields]\n` +
+      alreadyFilled.map(f => `- ${f} (already: "${currentValues[f]}")`).join('\n')
+    : ''
+
+  const rules =
+    `\n\nRules:\n` +
+    `1. Extract values ONLY for fields listed in [FIELDS TO FILL].\n` +
+    `2. Only return a field if its value is explicitly and clearly stated in the source — do NOT infer, guess, or derive.\n` +
+    `3. If you are not confident a value matches a field, omit it.\n` +
+    `4. Return ONLY the JSON object mapping field names to their values, no markdown, no explanation.`
+
   return (
-    `You are filling in a document template. The template has these fields:\n${fieldList}\n\n` +
-    `Extract the value for each field from the source document provided.\n` +
-    `Return a JSON object mapping each field name to its value. Only include fields you find.\n` +
-    `Respond with ONLY the JSON object, no markdown, no explanation.` +
+    `You are filling in a document template.\n\n` +
+    toFillSection +
+    alreadyFilledSection +
+    rules +
     langInstruction
   )
 }
 
-function _parseAnalyzeResponse(text, fields) {
+function _parseAnalyzeResponse(text, fields, currentValues = {}) {
   const cleaned = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
   const parsed = JSON.parse(cleaned)
   if (typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('MALFORMED_RESPONSE')
   const result = {}
   for (const field of fields) {
+    if (currentValues[field]) continue // never overwrite already-filled fields
     if (Object.prototype.hasOwnProperty.call(parsed, field)) {
       result[field] = parsed[field]
     }
@@ -355,12 +371,12 @@ export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDesc
   }
 
   try {
-    return _parseAnalyzeResponse(responseText, fields)
+    return _parseAnalyzeResponse(responseText, fields, currentValues)
   } catch {
     // Retry once
     try {
       const retryResult = await model.generateContent(contents)
-      return _parseAnalyzeResponse(retryResult.response.text(), fields)
+      return _parseAnalyzeResponse(retryResult.response.text(), fields, currentValues)
     } catch {
       throw new Error('MALFORMED_RESPONSE')
     }
