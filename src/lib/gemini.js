@@ -1,8 +1,28 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import * as mammoth from 'mammoth'
 
-const MODEL = 'gemini-2.5-flash'
+const MODELS = ['gemini-2.5-flas', 'gemini-flash-latest']
 export const MAX_CHARS = 750_000
+
+async function generateWithFallback(apiKey, contents, timeoutMs = null) {
+  let lastError
+  for (const modelName of MODELS) {
+    const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: modelName })
+    try {
+      const promise = model.generateContent(contents)
+      const result = timeoutMs
+        ? await Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
+          ])
+        : await promise
+      return result
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw new Error(`All AI models failed. Last error: ${lastError?.message}`)
+}
 
 function buildPrompt(content, lang) {
   const langInstruction = lang === 'vi' ? '\nRespond in Vietnamese.' : ''
@@ -24,24 +44,26 @@ function parseResponse(text) {
 }
 
 export async function testConnection(apiKey) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: 'Reply with just: OK' }] }],
-      }),
-    }
-  )
-  if (!res.ok) {
+  let lastError
+  for (const modelName of MODELS) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Reply with just: OK' }] }],
+        }),
+      }
+    )
+    if (res.ok) return true
     const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
+    lastError = new Error(err?.error?.message ?? `HTTP ${res.status}`)
   }
-  return true
+  throw lastError
 }
 
 export async function extractVariables(apiKey, content, lang = 'vi') {
@@ -49,11 +71,9 @@ export async function extractVariables(apiKey, content, lang = 'vi') {
     throw new Error(`Document too large: ${content.length} chars (max ${MAX_CHARS})`)
   }
 
-  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-
   let responseText
   try {
-    const result = await model.generateContent(buildPrompt(content, lang))
+    const result = await generateWithFallback(apiKey, buildPrompt(content, lang))
     responseText = result.response.text()
   } catch (err) {
     throw new Error(`Gemini API error: ${err.message}`)
@@ -64,7 +84,8 @@ export async function extractVariables(apiKey, content, lang = 'vi') {
   } catch {
     // Retry once with a stricter prompt
     try {
-      const retryResult = await model.generateContent(
+      const retryResult = await generateWithFallback(
+        apiKey,
         buildPrompt(content, lang) + '\n\nCRITICAL: respond with valid JSON only.'
       )
       return parseResponse(retryResult.response.text())
@@ -92,11 +113,7 @@ export async function suggestFieldName(apiKey, selectedText, surroundingContext,
 
 
   console.log(prompt)
-  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-  const result = await Promise.race([
-    model.generateContent(prompt),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
-  ])
+  const result = await generateWithFallback(apiKey, prompt, 10_000)
   const raw = result.response.text().trim()
   try {
     const cleaned = raw.replace(/```json?\n?/g, '').replace(/```/g, '').trim()
@@ -154,11 +171,7 @@ export async function suggestFieldPattern(apiKey, fullCellText, selectedText, ex
     `${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
 
   console.log(prompt)
-  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
-  const raw = await Promise.race([
-    model.generateContent(prompt),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
-  ])
+  const raw = await generateWithFallback(apiKey, prompt, 10_000)
   const text = raw.response.text().trim()
 
   return _parseFieldPattern(text, fullCellText)
@@ -314,7 +327,6 @@ export async function _resizeImageToLimit(arrayBuffer, mimeType, maxBytes) {
  * @returns {Promise<Record<string,string>>}
  */
 export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDescriptions = {}, fieldSampleData = {}, currentValues = {}) {
-  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
   const prompt = _buildAnalyzePrompt(fields, lang, fieldDescriptions, fieldSampleData, currentValues)
 
   console.log(prompt)
@@ -364,7 +376,7 @@ export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDesc
 
   let responseText
   try {
-    const result = await model.generateContent(contents)
+    const result = await generateWithFallback(apiKey, contents)
     responseText = result.response.text()
   } catch (err) {
     throw new Error(`Gemini API error: ${err.message}`)
@@ -375,7 +387,7 @@ export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDesc
   } catch {
     // Retry once
     try {
-      const retryResult = await model.generateContent(contents)
+      const retryResult = await generateWithFallback(apiKey, contents)
       return _parseAnalyzeResponse(retryResult.response.text(), fields, currentValues)
     } catch {
       throw new Error('MALFORMED_RESPONSE')
