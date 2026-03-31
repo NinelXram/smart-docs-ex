@@ -302,6 +302,37 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     await openSuggestion(selectedText, surroundingContext, pendingData, position)
   }, [selectionTooltip, openSuggestion])
 
+  const handleApplyExistingField = useCallback(async (fieldName) => {
+    if (!selectionTooltip) return
+    const { pendingData } = selectionTooltip
+    pendingRef.current = pendingData
+    setSelectionTooltip(null)
+    savedScrollRef.current = viewerRef.current?.scrollTop ?? 0
+    setProcessing(true)
+    try {
+      let result
+      if (format === 'docx') {
+        const { selectedText, paragraphIndex } = pendingData
+        result = insertDocx(binary, selectedText, paragraphIndex, fieldName)
+      } else {
+        const { cellAddress } = pendingData
+        result = insertXlsx(binary, cellAddress, fieldName, `{{${fieldName}}}`)
+      }
+      if (result.error) {
+        setPopover({ state: 'ready', label: '', fieldName: '', description: '', errorMsg: t('review.errorInsertFailed'), position: { top: 80, left: 50 } })
+        return
+      }
+      const newBinary = result.binary
+      setBinary(newBinary)
+      const { html: newHtml } = format === 'docx'
+        ? await renderDocx(newBinary)
+        : renderXlsx(newBinary)
+      setHtml(newHtml)
+    } finally {
+      setProcessing(false)
+    }
+  }, [selectionTooltip, format, binary, t])
+
   const handleAccept = async () => {
     const fieldName = popover.fieldName.trim()
     if (!fieldName) {
@@ -483,14 +514,37 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
         {/* Selection tooltip — shown after highlight, before AI call */}
         {selectionTooltip && (
-          <button
-            className="absolute z-20 bg-gray-900 text-white text-xs rounded px-2 py-1 shadow-lg hover:bg-gray-700 whitespace-nowrap"
+          <div
+            className="absolute z-20 bg-gray-900 text-white text-xs rounded shadow-lg"
             style={{ top: selectionTooltip.position.top, left: selectionTooltip.position.left }}
             onMouseDown={e => e.preventDefault()}
-            onClick={handleAnalyzeClick}
           >
-            {t('review.analyzeButton')}
-          </button>
+            <button
+              className="px-2 py-1.5 hover:bg-gray-700 whitespace-nowrap w-full text-left rounded-t"
+              onClick={handleAnalyzeClick}
+            >
+              {t('review.analyzeButton')}
+            </button>
+            {fields.length > 0 && (
+              <div className="border-t border-gray-700 px-2 py-1.5 max-w-52">
+                <p className="text-gray-400 mb-1">{t('review.reuseField')}</p>
+                <div className="flex flex-wrap gap-1">
+                  {fields.map((f, idx) => {
+                    const color = CHIP_COLORS[idx % CHIP_COLORS.length]
+                    return (
+                      <button
+                        key={f}
+                        className={`px-1.5 py-0.5 rounded font-mono text-white text-xs hover:opacity-75 ${color}`}
+                        onClick={() => handleApplyExistingField(f)}
+                      >
+                        {`{{${f}}}`}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Spinner overlay during field insertion */}

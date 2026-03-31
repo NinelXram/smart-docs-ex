@@ -39,6 +39,7 @@
     "accept": "Xác nhận",
     "dismiss": "Bỏ qua",
     "analyzeButton": "Phân tích",
+    "reuseField": "Dùng trường có sẵn:",
     "analyzing": "Đang phân tích…",
     "errorSingleParagraph": "Chọn văn bản trong cùng một đoạn",
     "errorAlreadyField": "Ô này đã là một trường",

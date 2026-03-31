@@ -36,7 +36,6 @@ export default function WelcomeOverlay({ onClose }) {
 
           {/* quote */}
           <div className="mt-5 rounded-xl bg-indigo-50 px-4 py-3">
-            <span className="text-base mr-1">💬</span>
             <span className="text-sm italic text-indigo-700 font-medium">{quote}</span>
           </div>
 
@@ -46,7 +45,7 @@ export default function WelcomeOverlay({ onClose }) {
             onClick={onClose}
             className="mt-6 w-full rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 active:scale-95 transition-all"
           >
-            OK, bắt đầu thôi! 🚀
+            OK, bắt đầu thôi!
           </button>
         </div>
       </div>
