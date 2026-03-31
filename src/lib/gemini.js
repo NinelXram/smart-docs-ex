@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import * as mammoth from 'mammoth'
 
-const MODELS = ['gemini-2.5-flas', 'gemini-flash-latest']
+const MODELS = ['gemini-2.5-flash', 'gemini-flash-latest']
 export const MAX_CHARS = 750_000
 
 async function generateWithFallback(apiKey, contents, timeoutMs = null) {
