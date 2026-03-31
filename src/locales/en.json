@@ -38,6 +38,7 @@
     "sampleData": "Sample data",
     "accept": "Accept",
     "dismiss": "Dismiss",
+    "analyzeButton": "Analyze",
     "analyzing": "Analyzing…",
     "errorSingleParagraph": "Select text within a single paragraph",
     "errorAlreadyField": "This cell is already a field",

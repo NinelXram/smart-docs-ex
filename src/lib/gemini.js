@@ -90,6 +90,8 @@ export async function suggestFieldName(apiKey, selectedText, surroundingContext,
   }).join(', ')
   const prompt = `The following text was selected from a document: "${selectedText}". The surrounding context is: "${surroundingContext}". Fields already defined: [${existingFieldDesc}]. Suggest a concise camelCase field name and a short description (max 10 words) explaining the field's purpose. Return JSON only: {"fieldName": "...", "description": "..."}${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
 
+
+  console.log(prompt)
   const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
   const result = await Promise.race([
     model.generateContent(prompt),
@@ -151,6 +153,7 @@ export async function suggestFieldPattern(apiKey, fullCellText, selectedText, ex
     `- If no label prefix exists, return label as ""` +
     `${lang === 'vi' ? '\nRespond in Vietnamese.' : ''}`
 
+  console.log(prompt)
   const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
   const raw = await Promise.race([
     model.generateContent(prompt),
@@ -298,6 +301,7 @@ export async function analyzeSource(apiKey, file, fields, lang = 'vi', fieldDesc
   const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: MODEL })
   const prompt = _buildAnalyzePrompt(fields, lang, fieldDescriptions, fieldSampleData, currentValues)
 
+  console.log(prompt)
   let contents
 
   if (file.type === 'image/png' || file.type === 'image/jpeg' ||

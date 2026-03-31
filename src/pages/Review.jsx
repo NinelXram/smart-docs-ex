@@ -114,6 +114,8 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
   const [processing, setProcessing] = useState(false)
   const [popover, setPopover] = useState(null)
   // popover shape: { state: 'loading'|'ready', label: string, fieldName: string, description: string, errorMsg: string, position: {top, left} }
+  const [selectionTooltip, setSelectionTooltip] = useState(null)
+  // selectionTooltip shape: { selectedText, surroundingContext, pendingData, position: {top, left} }
   const pendingRef = useRef(null)
   const popoverRef = useRef(null)
   // pending shape (DOCX): { selectedText, paragraphIndex }
@@ -193,11 +195,17 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     }
   }, [apiKey, fields, fieldSampleData, format, lang, t])
 
-  const handleMouseUp = useCallback(async () => {
+  const handleMouseUp = useCallback(() => {
     const sel = window.getSelection()
-    if (!sel || sel.isCollapsed) return
+    if (!sel || sel.isCollapsed) {
+      setSelectionTooltip(null)
+      return
+    }
     const selectedText = sel.toString().trim()
-    if (selectedText.replace(/\s/g, '').length < 3) return
+    if (selectedText.replace(/\s/g, '').length < 1) {
+      setSelectionTooltip(null)
+      return
+    }
 
     if (format === 'docx') {
       // anchorNode/focusNode may be text nodes (no .closest); use parentElement first
@@ -242,7 +250,7 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
 
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
-      await openSuggestion(selectedText, surroundingContext, { selectedText, paragraphIndex }, { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left })
+      setSelectionTooltip({ selectedText, surroundingContext, pendingData: { selectedText, paragraphIndex }, position: { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left } })
     } else if (format === 'xlsx') {
       const anchorCell = sel.anchorNode?.parentElement?.closest('td[data-cell-address]') ?? null
       const focusCell = sel.focusNode?.parentElement?.closest('td[data-cell-address]') ?? null
@@ -253,11 +261,11 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
       const surroundingContext = getXlsxContext(anchorCell)
       const rect = sel.getRangeAt(0).getBoundingClientRect()
       const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
-      await openSuggestion(selectedText, surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left })
+      setSelectionTooltip({ selectedText, surroundingContext, pendingData: { cellAddress, fullCellText }, position: { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left } })
     }
-  }, [format, openSuggestion, t])
+  }, [format, t])
 
-  const handleClick = useCallback(async e => {
+  const handleClick = useCallback(e => {
     if (format !== 'xlsx') return
     const td = e.target.closest('td[data-cell-address]')
     if (!td) return
@@ -275,13 +283,20 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
     const surroundingContext = getXlsxContext(td)
     const rect = td.getBoundingClientRect()
     const containerRect = viewerRef.current?.parentElement?.getBoundingClientRect() ?? { top: 0, left: 0 }
-    await openSuggestion('', surroundingContext, { cellAddress, fullCellText }, { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left })
-  }, [format, openSuggestion, t])
+    setSelectionTooltip({ selectedText: '', surroundingContext, pendingData: { cellAddress, fullCellText }, position: { top: rect.bottom + 8 - containerRect.top, left: rect.left - containerRect.left } })
+  }, [format, t])
 
   const handleTabClick = useCallback((name) => {
     tabSwitchRef.current = true  // mark as tab switch so effect resets scroll
     setCurrentSheet(name)
   }, [])
+
+  const handleAnalyzeClick = useCallback(async () => {
+    if (!selectionTooltip) return
+    const { selectedText, surroundingContext, pendingData, position } = selectionTooltip
+    setSelectionTooltip(null)
+    await openSuggestion(selectedText, surroundingContext, pendingData, position)
+  }, [selectionTooltip, openSuggestion])
 
   const handleAccept = async () => {
     const fieldName = popover.fieldName.trim()
@@ -461,6 +476,18 @@ export default function Review({ html: initialHtml, binary: initialBinary, forma
           onClick={handleClick}
           dangerouslySetInnerHTML={{ __html: displayHtml }}
         />
+
+        {/* Selection tooltip — shown after highlight, before AI call */}
+        {selectionTooltip && (
+          <button
+            className="absolute z-20 bg-gray-900 text-white text-xs rounded px-2 py-1 shadow-lg hover:bg-gray-700 whitespace-nowrap"
+            style={{ top: selectionTooltip.position.top, left: selectionTooltip.position.left }}
+            onMouseDown={e => e.preventDefault()}
+            onClick={handleAnalyzeClick}
+          >
+            {t('review.analyzeButton')}
+          </button>
+        )}
 
         {/* Spinner overlay during field insertion */}
         {processing && (
